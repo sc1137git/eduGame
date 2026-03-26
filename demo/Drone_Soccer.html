@@ -1,15 +1,6 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-    <!-- Google tag (gtag.js) -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-GER1YCNKW7"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
-
-  gtag('config', 'G-GER1YCNKW7');
-</script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
     <title>四軸無人機操作教學 v0.23 (真實機身與尾燈)</title>
@@ -160,8 +151,8 @@
     <div id="ui-layer">
         <div class="top-ui">
             <div class="panel status-box">
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <h2>無人機足球練習</h2>
+                <div style="display:flex; justify-content:space-between; align-items:center; width: 100%;">
+                    <h2 id="panel-title">無人機足球練習</h2>
                     <button id="btn-toggle-ui" style="background:none;border:none;font-size:1.2rem;cursor:pointer;padding:0;line-height:1;">➖</button>
                 </div>
                 
@@ -170,26 +161,29 @@
                     <div class="msg" id="game-msg">請先完成起飛準備</div>
                 </div>
 
-                <!-- 常駐操作按鈕區 -->
-                <div id="action-buttons" style="display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 5px;">
-                    <button id="btn-tilt" class="btn" style="flex: 1 1 45%; background:#f39c12; margin-bottom: 0;">📱 體感</button>
-                    <button id="btn-goalie" class="btn" style="flex: 1 1 45%; background:#e67e22; margin-bottom: 0;">🤖 開守門員</button>
-                    <button id="btn-view" class="btn" style="display:none; flex: 1 1 45%; background:#9b59b6; margin-bottom: 0;">切換: 近距跟隨</button>
-                    <button id="btn-reset" class="btn" style="display:none; flex: 1 1 45%; background:#c0392b; margin-bottom: 0;">🔄 重置場地</button>
-                </div>
-                
-                <div id="setup-group">
-                    <div id="status-text" style="color: #e74c3c; font-weight: bold; margin-bottom: 10px; margin-top: 10px;">狀態: 未就緒</div>
-                    <button id="btn-prop" class="btn">1. 安裝螺旋槳</button>
-                    <button id="btn-batt" class="btn">2. 安裝電池</button>
+                <!-- 將按鈕與安裝區塊包進可收合的區域 -->
+                <div id="collapsible-area">
+                    <!-- 常駐操作按鈕區 -->
+                    <div id="action-buttons" style="display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 5px;">
+                        <button id="btn-tilt" class="btn" style="flex: 1 1 45%; background:#f39c12; margin-bottom: 0;">📱 體感</button>
+                        <button id="btn-goalie" class="btn" style="flex: 1 1 45%; background:#e67e22; margin-bottom: 0;">🤖 開守門員</button>
+                        <button id="btn-view" class="btn" style="display:none; flex: 1 1 45%; background:#9b59b6; margin-bottom: 0;">切換: 近距跟隨</button>
+                        <button id="btn-reset" class="btn" style="display:none; flex: 1 1 45%; background:#c0392b; margin-bottom: 0;">🔄 重置場地</button>
+                    </div>
                     
-                    <div class="instructions">
-                        💡 <b>操作方式：</b><br>
-                        [左搖桿] 或 <b>W/S</b>：油門升降<br>
-                        [左搖桿] 或 <b>A/D</b>：偏航左右轉<br>
-                        [右搖桿] / <b>方向鍵</b> / <b>手機傾斜</b>：水平平移<br>
-                        🎯 <b>注意：發亮紅燈是尾巴，藍條是前方！</b><br>
-                        🏆 目標：從前方穿過懸浮圓環得分！
+                    <div id="setup-group">
+                        <div id="status-text" style="color: #e74c3c; font-weight: bold; margin-bottom: 10px; margin-top: 10px;">狀態: 未就緒</div>
+                        <button id="btn-prop" class="btn">1. 安裝螺旋槳</button>
+                        <button id="btn-batt" class="btn">2. 安裝電池</button>
+                        
+                        <div class="instructions">
+                            💡 <b>操作方式：</b><br>
+                            [左搖桿] 或 <b>W/S</b>：油門升降<br>
+                            [左搖桿] 或 <b>A/D</b>：偏航左右轉<br>
+                            [右搖桿] / <b>方向鍵</b> / <b>手機傾斜</b>：水平平移<br>
+                            🎯 <b>注意：發亮紅燈是尾巴，藍條是前方！</b><br>
+                            🏆 目標：從前方穿過懸浮圓環得分！
+                        </div>
                     </div>
                 </div>
             </div>
@@ -429,13 +423,18 @@
         const gameMsg = document.getElementById('game-msg');
         const setupGroup = document.getElementById('setup-group');
         const btnToggleUI = document.getElementById('btn-toggle-ui');
+        const collapsibleArea = document.getElementById('collapsible-area');
+        const panelTitle = document.getElementById('panel-title');
 
+        // 修改 UI 收合邏輯，現在會連同操作按鈕和標題一起隱藏
         btnToggleUI.addEventListener('click', () => {
-            if (setupGroup.style.display === 'none') {
-                setupGroup.style.display = 'block';
+            if (collapsibleArea.style.display === 'none') {
+                collapsibleArea.style.display = 'block';
+                panelTitle.style.display = 'block';
                 btnToggleUI.innerText = '➖';
             } else {
-                setupGroup.style.display = 'none';
+                collapsibleArea.style.display = 'none';
+                panelTitle.style.display = 'none';
                 btnToggleUI.innerText = '➕';
             }
         });
@@ -545,8 +544,11 @@
                 
                 lastTime = Date.now(); 
 
+                // 起飛後自動把多餘介面折疊起來，釋放手機畫面空間
                 setTimeout(() => {
                     setupGroup.style.display = 'none';
+                    collapsibleArea.style.display = 'none';
+                    panelTitle.style.display = 'none';
                     btnToggleUI.innerText = '➕';
                 }, 1500);
             }

@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SVG 向量化工具 - HTML 輸出版</title>
+    <script src="https://cdn.jsdelivr.net/npm/potrace-js@1.0.3/dist/index.min.js"></script>
+    <style>
+        :root { --primary: #007AFF; --bg: #f5f5f7; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); display: flex; justify-content: center; padding: 40px 20px; }
+        .card { background: white; padding: 30px; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); width: 100%; max-width: 800px; }
+        h2 { margin-top: 0; color: #1d1d1f; text-align: center; }
+        .upload-area { border: 2px dashed #ccc; padding: 30px; text-align: center; border-radius: 10px; cursor: pointer; transition: 0.2s; margin-bottom: 20px; }
+        .upload-area:hover { border-color: var(--primary); background: #f0f7ff; }
+        
+        .workspace { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px; display: none; }
+        #preview-svg { background: #eee; border-radius: 8px; display: flex; align-items: center; justify-content: center; min-height: 250px; padding: 10px; }
+        #preview-svg svg { max-width: 100%; max-height: 300px; height: auto; }
+        
+        .code-area { display: flex; flex-direction: column; }
+        textarea { flex-grow: 1; font-family: monospace; font-size: 12px; padding: 10px; border: 1px solid #ddd; border-radius: 8px; resize: none; background: #282c34; color: #abb2bf; }
+        
+        .btn-group { grid-column: span 2; display: flex; gap: 10px; justify-content: center; margin-top: 15px; }
+        button { background: var(--primary); color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600; }
+        button.secondary { background: #34c759; }
+        button:active { transform: scale(0.98); }
+        .range-box { grid-column: span 2; text-align: center; background: #eee; padding: 10px; border-radius: 8px; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2>⚡ 圖片轉 HTML SVG</h2>
+    
+    <div class="upload-area" onclick="document.getElementById('upload').click()">
+        <p>點擊或拖放圖片至此 (JPG/PNG/WebP)</p>
+        <input type="file" id="upload" accept="image/*" hidden>
+    </div>
+
+    <div class="workspace" id="workspace">
+        <div class="range-box">
+            <label>調整細節 (門檻值): </label>
+            <input type="range" id="threshold" min="0" max="255" value="128">
+            <span id="threshold-val">128</span>
+        </div>
+
+        <div>
+            <p><strong>預覽圖</strong></p>
+            <div id="preview-svg"></div>
+        </div>
+
+        <div class="code-area">
+            <p><strong>HTML 程式碼</strong></p>
+            <textarea id="svg-code" readonly></textarea>
+        </div>
+
+        <div class="btn-group">
+            <button onclick="copyCode()">📋 複製 HTML 程式碼</button>
+            <button class="secondary" id="download-btn">💾 下載 .svg 檔案</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const upload = document.getElementById('upload');
+    const workspace = document.getElementById('workspace');
+    const previewSvg = document.getElementById('preview-svg');
+    const svgCode = document.getElementById('svg-code');
+    const thresholdInput = document.getElementById('threshold');
+    const thresholdVal = document.getElementById('threshold-val');
+    let currentSvg = "";
+
+    upload.addEventListener('change', handleFile);
+    thresholdInput.addEventListener('input', () => {
+        thresholdVal.textContent = thresholdInput.value;
+        handleFile(); 
+    });
+
+    async function handleFile() {
+        const file = upload.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            const potrace = window.Potrace;
+            const svg = await potrace.posterize(e.target.result, {
+                threshold: parseInt(thresholdInput.value),
+                background: 'transparent'
+            });
+            
+            // 處理與優化產出的 SVG 字串
+            currentSvg = svg;
+            previewSvg.innerHTML = svg;
+            svgCode.value = svg; // 顯示在 Textarea
+            workspace.style.display = 'grid';
+        };
+        reader.readAsDataURL(file);
+    }
+
+    function copyCode() {
+        svgCode.select();
+        document.execCommand('copy');
+        alert('代碼已複製！你可以直接貼到 HTML <body> 中。');
+    }
+
+    document.getElementById('download-btn').addEventListener('click', () => {
+        const blob = new Blob([currentSvg], { type: 'image/svg+xml' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'vector.svg';
+        a.click();
+    });
+</script>
+
+</body>
+</html>

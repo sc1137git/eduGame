@@ -1,0 +1,246 @@
+
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>基隆旅行規劃 v0.1</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        :root {
+            --primary-color: #003366;
+            --accent-color: #ff9900;
+            --bg-color: #f4f7f6;
+            --text-color: #333;
+        }
+
+        body, html {
+            margin: 0; padding: 0;
+            font-family: "Microsoft JhengHei", sans-serif;
+            height: 100%; background: var(--bg-color);
+            overflow-x: hidden;
+        }
+
+        header {
+            background: var(--primary-color);
+            color: white; padding: 15px;
+            text-align: center; position: sticky; top: 0; z-index: 1000;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+
+        #map {
+            height: 40vh; width: 100%;
+            z-index: 1;
+        }
+
+        .container {
+            padding: 15px;
+            max-width: 800px;
+            margin: auto;
+        }
+
+        .section-title {
+            border-left: 5px solid var(--accent-color);
+            padding-left: 10px; margin: 20px 0 10px;
+            font-size: 1.2rem; font-weight: bold;
+            color: var(--primary-color);
+        }
+
+        .card {
+            background: white; border-radius: 8px;
+            padding: 15px; margin-bottom: 15px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        /* Timetable styles */
+        .timetable-controls {
+            display: flex; gap: 10px; margin-bottom: 10px;
+        }
+        button {
+            flex: 1; padding: 10px; border: none;
+            border-radius: 5px; background: #ddd;
+            cursor: pointer; font-weight: bold;
+        }
+        button.active {
+            background: var(--primary-color); color: white;
+        }
+
+        table {
+            width: 100%; border-collapse: collapse; margin-top: 10px;
+            font-size: 0.9rem;
+        }
+        th, td {
+            padding: 10px; text-align: left; border-bottom: 1px solid #eee;
+        }
+        th { background: #f8f8f8; }
+
+        /* List styles */
+        .list-item {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 10px 0; border-bottom: 1px solid #f0f0f0;
+            cursor: pointer;
+        }
+        .list-item:last-child { border-bottom: none; }
+        .list-item:hover { color: var(--accent-color); }
+        .tag {
+            font-size: 0.7rem; padding: 2px 6px;
+            border-radius: 4px; background: #e0e0e0;
+        }
+
+        .footer {
+            text-align: center; padding: 20px;
+            font-size: 0.8rem; color: #888;
+        }
+
+        @media (min-height: 700px) {
+            #map { height: 50vh; }
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h2 style="margin:0">基隆旅行規劃 v0.1</h2>
+</header>
+
+<div id="map"></div>
+
+<div class="container">
+    <!-- 火車時刻表 -->
+    <div class="section-title">基隆站 即時火車時刻</div>
+    <div class="card">
+        <div class="timetable-controls">
+            <button id="btnSouth" class="active" onclick="showTrains('South')">南下 (往台北/新竹)</button>
+            <button id="btnNorth" onclick="showTrains('North')">北上 (往蘇澳/花蓮)</button>
+        </div>
+        <div id="trainList">
+            <p style="text-align:center">載入中...</p>
+        </div>
+    </div>
+
+    <!-- 景點推薦 -->
+    <div class="section-title">車站周邊步行景點</div>
+    <div class="card" id="attractions">
+        <!-- JS 動態生成 -->
+    </div>
+
+    <!-- 美食推薦 -->
+    <div class="section-title">在地美食推薦</div>
+    <div class="card">
+        <div style="font-weight:bold; color:#666; margin-bottom:10px;">早 / 午 / 晚 / 點心</div>
+        <div id="foodList">
+            <!-- JS 動態生成 -->
+        </div>
+    </div>
+
+    <div class="footer">
+        © 2026 基隆旅遊小助手 - v0.1<br>
+        資料僅供參考，實際時刻請以台鐵官網為準。
+    </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    // 資料定義
+    const locations = {
+        attractions: [
+            { name: "海洋廣場", lat: 25.1317, lng: 121.7408, desc: "看老鷹與大船入港的最佳地點" },
+            { name: "虎仔山基隆地標", lat: 25.1332, lng: 121.7345, desc: "好萊塢風格的KEELUNG大字" },
+            { name: "基隆塔", lat: 25.1315, lng: 121.7465, desc: "全新開放的城市頂端景觀塔" },
+            { name: "崁仔頂魚市", lat: 25.1292, lng: 121.7400, desc: "深夜限定，北台灣最大魚市場" }
+        ],
+        food: [
+            { name: "周家蔥油餅", type: "早餐", lat: 25.1328, lng: 121.7460, desc: "在地排隊名店，先煎後烤" },
+            { name: "孝三路大腸圈", type: "午餐", lat: 25.1298, lng: 121.7395, desc: "古法製作，在地人激推" },
+            { name: "廟口營養三明治", type: "晚餐", lat: 25.1285, lng: 121.7438, desc: "基隆廟口代表性美食" },
+            { name: "連珍糕餅店", type: "點心", lat: 25.1305, lng: 121.7415, desc: "芋泥球是必買伴手禮" },
+            { name: "阿華炒麵", type: "晚餐", lat: 25.1288, lng: 121.7442, desc: "濃郁咖哩口味炒麵" }
+        ]
+    };
+
+    // 地圖初始化
+    const map = L.map('map').setView([25.131, 121.740], 15);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap'
+    }).addTo(map);
+
+    // 標記集合
+    const markers = {};
+
+    function initMarkers() {
+        [...locations.attractions, ...locations.food].forEach(loc => {
+            const marker = L.marker([loc.lat, loc.lng]).addTo(map)
+                .bindPopup(`<b>${loc.name}</b><br>${loc.desc}`);
+            markers[loc.name] = marker;
+        });
+    }
+
+    function focusLocation(name) {
+        const marker = markers[name];
+        if (marker) {
+            map.setView(marker.getLatLng(), 17);
+            marker.openPopup();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    }
+
+    // 渲染 UI
+    function renderUI() {
+        const attrDiv = document.getElementById('attractions');
+        locations.attractions.forEach(item => {
+            attrDiv.innerHTML += `
+                <div class="list-item" onclick="focusLocation('${item.name}')">
+                    <span>${item.name}</span>
+                    <span class="tag">步行約 5-10分</span>
+                </div>`;
+        });
+
+        const foodDiv = document.getElementById('foodList');
+        locations.food.forEach(item => {
+            foodDiv.innerHTML += `
+                <div class="list-item" onclick="focusLocation('${item.name}')">
+                    <span><small>[${item.type}]</small> ${item.name}</span>
+                    <span class="tag">查看地圖</span>
+                </div>`;
+        });
+    }
+
+    // 模擬火車時刻 (因 CORS 限制，前端直接抓取台鐵 API 需經過代理，此處提供靜態結構模擬實時)
+    function showTrains(dir) {
+        const btnS = document.getElementById('btnSouth');
+        const btnN = document.getElementById('btnNorth');
+        if(dir === 'South') {
+            btnS.classList.add('active'); btnN.classList.remove('active');
+        } else {
+            btnN.classList.add('active'); btnS.classList.remove('active');
+        }
+
+        const now = new Date();
+        const trainList = document.getElementById('trainList');
+        
+        // 模擬數據
+        const mockTrains = dir === 'South' ? [
+            { type: "區間車", code: "1157", time: "隨即", dest: "苗栗" },
+            { type: "新自強", code: "223", time: "15 分鐘後", dest: "斗六" },
+            { type: "區間車", code: "1161", time: "32 分鐘後", dest: "新竹" }
+        ] : [
+            { type: "區間快", code: "4022", time: "12 分鐘後", dest: "二結" },
+            { type: "區間車", code: "4192", time: "25 分鐘後", desc: "蘇澳" }
+        ];
+
+        let html = '<table><tr><th>車種</th><th>車次</th><th>時間</th><th>終點</th></tr>';
+        mockTrains.forEach(t => {
+            html += `<tr><td>${t.type}</td><td>${t.code}</td><td>${t.time}</td><td>${t.dest}</td></tr>`;
+        });
+        html += '</table>';
+        trainList.innerHTML = html;
+    }
+
+    // 初始化啟動
+    initMarkers();
+    renderUI();
+    showTrains('South');
+</script>
+
+</body>
+</html>

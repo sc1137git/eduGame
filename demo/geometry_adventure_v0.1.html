@@ -1,0 +1,1561 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>幾何冒險：修復神祕建築 v0.1</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Noto+Sans+TC:wght@400;500;700;900&display=swap');
+
+  :root {
+    --bg: #0f0e1a;
+    --panel: #1a1830;
+    --panel2: #221f3a;
+    --accent: #f7c948;
+    --accent2: #ff6b6b;
+    --accent3: #4ecdc4;
+    --accent4: #a78bfa;
+    --green: #6fcf97;
+    --text: #f0eeff;
+    --text2: #a99fc8;
+    --border: #3a3560;
+    --grid: rgba(255,255,255,0.04);
+    --shadow: 0 4px 32px rgba(0,0,0,0.5);
+    --radius: 18px;
+    --radius-sm: 10px;
+    --tool-size: 52px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Noto Sans TC', 'Nunito', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100dvh;
+    overflow: hidden;
+    user-select: none;
+    touch-action: none;
+  }
+
+  /* ─── LAYOUT ─── */
+  #app {
+    display: grid;
+    grid-template-rows: 72px 1fr;
+    grid-template-columns: 1fr 280px;
+    height: 100dvh;
+    gap: 0;
+  }
+
+  /* ─── TOP BAR ─── */
+  #topbar {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 0 20px;
+    background: var(--panel);
+    border-bottom: 2px solid var(--border);
+    position: relative;
+    z-index: 10;
+  }
+
+  .logo {
+    font-family: 'Nunito', sans-serif;
+    font-weight: 900;
+    font-size: 1.15rem;
+    color: var(--accent);
+    white-space: nowrap;
+    letter-spacing: -0.5px;
+    flex-shrink: 0;
+  }
+  .logo span { color: var(--accent3); }
+
+  #mission-box {
+    flex: 1;
+    background: var(--panel2);
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    overflow: hidden;
+  }
+  .mission-icon { font-size: 1.5rem; flex-shrink: 0; }
+  .mission-text { font-size: 0.85rem; color: var(--text); line-height: 1.4; }
+  .mission-text strong { color: var(--accent); }
+
+  #score-box {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--panel2);
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 8px 14px;
+    flex-shrink: 0;
+  }
+  .score-label { font-size: 0.75rem; color: var(--text2); }
+  .score-val { font-size: 1.3rem; font-weight: 900; color: var(--accent); font-family: 'Nunito', sans-serif; }
+
+  /* ─── MAIN CANVAS AREA ─── */
+  #stage-wrap {
+    position: relative;
+    overflow: hidden;
+    background: var(--bg);
+    cursor: crosshair;
+  }
+
+  #main-canvas {
+    position: absolute;
+    top: 0; left: 0;
+    touch-action: none;
+  }
+
+  /* ─── HUD overlays ─── */
+  #angle-hud {
+    position: absolute;
+    bottom: 16px; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(26,24,48,0.92);
+    border: 1.5px solid var(--border);
+    border-radius: 40px;
+    padding: 8px 22px;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--accent3);
+    pointer-events: none;
+    display: none;
+    gap: 8px;
+    align-items: center;
+    backdrop-filter: blur(8px);
+  }
+
+  #feedback-banner {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%,-50%) scale(0);
+    background: var(--panel);
+    border: 2.5px solid var(--accent);
+    border-radius: var(--radius);
+    padding: 20px 36px;
+    text-align: center;
+    pointer-events: none;
+    transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
+    z-index: 100;
+  }
+  #feedback-banner.show { transform: translate(-50%,-50%) scale(1); }
+  #feedback-banner.wrong { border-color: var(--accent2); }
+  #feedback-banner .fb-emoji { font-size: 3rem; }
+  #feedback-banner .fb-text { font-size: 1.1rem; font-weight: 700; margin-top: 6px; }
+
+  /* ─── SIDE PANEL ─── */
+  #side-panel {
+    background: var(--panel);
+    border-left: 2px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-bottom: 20px;
+  }
+
+  .panel-section {
+    padding: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .panel-title {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--text2);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+
+  /* Tool buttons */
+  .tool-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+  .tool-btn {
+    aspect-ratio: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    background: var(--panel2);
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s;
+    font-size: 0.65rem;
+    color: var(--text2);
+    padding: 8px 4px;
+  }
+  .tool-btn .tb-icon { font-size: 1.5rem; }
+  .tool-btn:hover { border-color: var(--accent4); color: var(--text); }
+  .tool-btn.active { border-color: var(--accent); background: rgba(247,201,72,0.1); color: var(--accent); }
+
+  /* Shape controls */
+  .control-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .control-label { font-size: 0.8rem; color: var(--text2); flex-shrink: 0; }
+  .control-input {
+    width: 80px;
+    background: var(--panel2);
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 10px;
+    color: var(--text);
+    font-size: 0.85rem;
+    font-family: 'Nunito', sans-serif;
+    text-align: right;
+    outline: none;
+  }
+  .control-input:focus { border-color: var(--accent3); }
+  .control-slider {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    outline: none;
+    cursor: pointer;
+  }
+  .control-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(247,201,72,0.5);
+  }
+
+  .action-btn {
+    width: 100%;
+    padding: 11px;
+    border-radius: var(--radius-sm);
+    border: none;
+    font-family: 'Noto Sans TC', sans-serif;
+    font-size: 0.88rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s;
+    margin-top: 8px;
+  }
+  .action-btn.primary {
+    background: linear-gradient(135deg, var(--accent), #e6a800);
+    color: #1a1400;
+  }
+  .action-btn.primary:hover { filter: brightness(1.1); transform: translateY(-1px); }
+  .action-btn.danger {
+    background: rgba(255,107,107,0.15);
+    color: var(--accent2);
+    border: 1.5px solid rgba(255,107,107,0.3);
+  }
+  .action-btn.danger:hover { background: rgba(255,107,107,0.25); }
+
+  /* Achievement list */
+  .achievement-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .ach-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--panel2);
+    border-radius: var(--radius-sm);
+    border: 1.5px solid var(--border);
+    transition: border-color 0.3s;
+  }
+  .ach-item.done { border-color: var(--green); background: rgba(111,207,151,0.08); }
+  .ach-icon { font-size: 1.4rem; }
+  .ach-info { flex: 1; }
+  .ach-name { font-size: 0.82rem; font-weight: 700; }
+  .ach-desc { font-size: 0.68rem; color: var(--text2); margin-top: 2px; }
+  .ach-check { font-size: 1.2rem; opacity: 0; transition: opacity 0.3s; }
+  .ach-item.done .ach-check { opacity: 1; }
+
+  /* Mission panel */
+  .mission-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .mission-item {
+    padding: 10px 12px;
+    background: var(--panel2);
+    border-radius: var(--radius-sm);
+    border: 1.5px solid var(--border);
+    cursor: pointer;
+    transition: all 0.15s;
+    font-size: 0.8rem;
+  }
+  .mission-item:hover { border-color: var(--accent4); }
+  .mission-item.active { border-color: var(--accent); background: rgba(247,201,72,0.08); }
+  .mission-item.done { border-color: var(--green); opacity: 0.6; }
+  .mission-title { font-weight: 700; color: var(--text); }
+  .mission-sub { font-size: 0.7rem; color: var(--text2); margin-top: 3px; }
+
+  /* ─── MOBILE ─── */
+  @media (max-width: 700px) {
+    #app {
+      grid-template-rows: 60px 1fr 56px;
+      grid-template-columns: 1fr;
+    }
+    #side-panel { display: none; }
+    #mobile-toolbar {
+      display: flex !important;
+      grid-column: 1;
+    }
+    #topbar { padding: 0 12px; gap: 10px; }
+    .logo { font-size: 0.95rem; }
+    .mission-text { font-size: 0.72rem; }
+  }
+
+  #mobile-toolbar {
+    display: none;
+    grid-column: 1;
+    background: var(--panel);
+    border-top: 2px solid var(--border);
+    align-items: center;
+    justify-content: space-around;
+    padding: 4px 8px;
+    gap: 4px;
+  }
+  .mob-tool-btn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 6px 4px;
+    border-radius: 8px;
+    border: 1.5px solid transparent;
+    cursor: pointer;
+    font-size: 0.6rem;
+    color: var(--text2);
+    background: none;
+    transition: all 0.15s;
+  }
+  .mob-tool-btn .mtb-icon { font-size: 1.3rem; }
+  .mob-tool-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(247,201,72,0.1); }
+
+  /* ─── MODAL ─── */
+  #modal-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 200;
+    align-items: center;
+    justify-content: center;
+  }
+  #modal-overlay.show { display: flex; }
+  #modal-box {
+    background: var(--panel);
+    border: 2px solid var(--border);
+    border-radius: var(--radius);
+    padding: 28px;
+    max-width: 360px;
+    width: 90%;
+    text-align: center;
+  }
+  #modal-box .modal-title { font-size: 1.4rem; font-weight: 900; margin-bottom: 10px; }
+  #modal-box .modal-body { font-size: 0.9rem; color: var(--text2); line-height: 1.6; margin-bottom: 20px; }
+  #modal-box .modal-actions { display: flex; gap: 12px; }
+  #modal-box .modal-actions .action-btn { flex: 1; margin-top: 0; }
+
+  /* ─── PARTICLES ─── */
+  .particle {
+    position: absolute;
+    pointer-events: none;
+    border-radius: 50%;
+    animation: particle-fly 0.8s ease-out forwards;
+  }
+  @keyframes particle-fly {
+    0% { transform: scale(1); opacity: 1; }
+    100% { transform: translate(var(--dx), var(--dy)) scale(0); opacity: 0; }
+  }
+
+  /* scrollbar */
+  #side-panel::-webkit-scrollbar { width: 4px; }
+  #side-panel::-webkit-scrollbar-track { background: var(--panel); }
+  #side-panel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  /* intro screen */
+  #intro-screen {
+    position: fixed; inset: 0;
+    background: var(--bg);
+    z-index: 500;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 24px;
+    gap: 20px;
+    transition: opacity 0.6s;
+  }
+  #intro-screen.hide { opacity: 0; pointer-events: none; }
+  .intro-logo {
+    font-family: 'Nunito', sans-serif;
+    font-weight: 900;
+    font-size: clamp(1.8rem, 6vw, 3rem);
+    color: var(--accent);
+    line-height: 1.2;
+  }
+  .intro-logo span { color: var(--accent3); }
+  .intro-sub { font-size: clamp(0.9rem, 3vw, 1.1rem); color: var(--text2); max-width: 420px; }
+  .intro-cards {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: 480px;
+  }
+  .intro-card {
+    background: var(--panel);
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 12px 16px;
+    font-size: 0.82rem;
+    text-align: left;
+    min-width: 130px;
+  }
+  .intro-card .ic-icon { font-size: 1.6rem; margin-bottom: 6px; }
+  .intro-card .ic-title { font-weight: 700; color: var(--accent4); margin-bottom: 3px; }
+  .intro-card .ic-desc { color: var(--text2); font-size: 0.75rem; }
+  .start-btn {
+    background: linear-gradient(135deg, var(--accent), #e6a800);
+    color: #1a1400;
+    font-weight: 900;
+    font-size: 1.1rem;
+    font-family: 'Noto Sans TC', sans-serif;
+    border: none;
+    border-radius: 50px;
+    padding: 16px 48px;
+    cursor: pointer;
+    transition: transform 0.15s, filter 0.15s;
+    box-shadow: 0 8px 32px rgba(247,201,72,0.4);
+  }
+  .start-btn:hover { transform: translateY(-3px); filter: brightness(1.1); }
+</style>
+</head>
+<body>
+
+<!-- ─── INTRO SCREEN ─── -->
+<div id="intro-screen">
+  <div class="intro-logo">🏛️ 幾何冒險<br><span>修復神祕建築</span></div>
+  <div class="intro-sub">幫助我們修復這座神祕建築！<br>用數學工具製作正確的零件，讓建築重現光彩。</div>
+  <div class="intro-cards">
+    <div class="intro-card">
+      <div class="ic-icon">📐</div>
+      <div class="ic-title">量角器</div>
+      <div class="ic-desc">拖動旋轉臂，<br>製作指定角度</div>
+    </div>
+    <div class="intro-card">
+      <div class="ic-icon">🔵</div>
+      <div class="ic-title">數位圓規</div>
+      <div class="ic-desc">設定半徑，<br>畫出完美圓形</div>
+    </div>
+    <div class="intro-card">
+      <div class="ic-icon">⬜</div>
+      <div class="ic-title">圖形庫</div>
+      <div class="ic-desc">製作長方形<br>與正方形</div>
+    </div>
+    <div class="intro-card">
+      <div class="ic-icon">🔄</div>
+      <div class="ic-title">旋轉</div>
+      <div class="ic-desc">將圖形旋轉<br>到正確角度</div>
+    </div>
+  </div>
+  <button class="start-btn" onclick="startGame()">🚀 開始冒險！</button>
+</div>
+
+<!-- ─── MAIN APP ─── -->
+<div id="app">
+
+  <!-- TOP BAR -->
+  <div id="topbar">
+    <div class="logo">🏛️ 幾何<span>冒險</span></div>
+    <div id="mission-box">
+      <div class="mission-icon" id="mission-icon">🎯</div>
+      <div class="mission-text" id="mission-text">載入任務中…</div>
+    </div>
+    <div id="score-box">
+      <div class="score-label">分數</div>
+      <div class="score-val" id="score-val">0</div>
+    </div>
+  </div>
+
+  <!-- MAIN STAGE -->
+  <div id="stage-wrap">
+    <canvas id="main-canvas"></canvas>
+    <div id="angle-hud">📐 <span id="hud-angle">0°</span></div>
+    <div id="feedback-banner">
+      <div class="fb-emoji" id="fb-emoji">🎉</div>
+      <div class="fb-text" id="fb-text">太棒了！</div>
+    </div>
+  </div>
+
+  <!-- SIDE PANEL -->
+  <div id="side-panel">
+
+    <!-- TOOLS -->
+    <div class="panel-section">
+      <div class="panel-title">🛠️ 工具箱</div>
+      <div class="tool-grid">
+        <div class="tool-btn active" id="tool-protractor" onclick="setTool('protractor')">
+          <span class="tb-icon">📐</span>量角器
+        </div>
+        <div class="tool-btn" id="tool-compass" onclick="setTool('compass')">
+          <span class="tb-icon">🔵</span>圓規
+        </div>
+        <div class="tool-btn" id="tool-rect" onclick="setTool('rect')">
+          <span class="tb-icon">⬜</span>矩形
+        </div>
+        <div class="tool-btn" id="tool-rotate" onclick="setTool('rotate')">
+          <span class="tb-icon">🔄</span>旋轉
+        </div>
+        <div class="tool-btn" id="tool-move" onclick="setTool('move')">
+          <span class="tb-icon">✋</span>移動
+        </div>
+        <div class="tool-btn" id="tool-erase" onclick="clearAll()">
+          <span class="tb-icon">🗑️</span>清除
+        </div>
+      </div>
+    </div>
+
+    <!-- PROPERTIES -->
+    <div class="panel-section" id="prop-section">
+      <div class="panel-title">⚙️ 屬性設定</div>
+      <div id="prop-angle">
+        <div class="control-row">
+          <span class="control-label">角度</span>
+          <input class="control-input" type="number" id="input-angle" value="90" min="0" max="360">
+        </div>
+        <input class="control-slider" type="range" id="slider-angle" min="0" max="360" value="90"
+          oninput="document.getElementById('input-angle').value=this.value; updateProtractorAngle(+this.value)">
+      </div>
+      <div id="prop-radius" style="display:none">
+        <div class="control-row">
+          <span class="control-label">半徑 (cm)</span>
+          <input class="control-input" type="number" id="input-radius" value="5" min="1" max="15">
+        </div>
+        <input class="control-slider" type="range" id="slider-radius" min="1" max="15" value="5"
+          oninput="document.getElementById('input-radius').value=this.value">
+      </div>
+      <div id="prop-rect" style="display:none">
+        <div class="control-row">
+          <span class="control-label">寬 (cm)</span>
+          <input class="control-input" type="number" id="input-width" value="8" min="1" max="20">
+        </div>
+        <div class="control-row">
+          <span class="control-label">高 (cm)</span>
+          <input class="control-input" type="number" id="input-height" value="5" min="1" max="20">
+        </div>
+      </div>
+      <div id="prop-rotate" style="display:none">
+        <div class="control-row">
+          <span class="control-label">旋轉角度</span>
+          <input class="control-input" type="number" id="input-rotate" value="0" min="0" max="360">
+        </div>
+        <input class="control-slider" type="range" id="slider-rotate" min="0" max="360" value="0"
+          oninput="document.getElementById('input-rotate').value=this.value; updateRotateAngle(+this.value)">
+      </div>
+      <button class="action-btn primary" onclick="submitShape()">✅ 提交零件</button>
+      <button class="action-btn danger" onclick="clearAll()">🗑️ 重新開始</button>
+    </div>
+
+    <!-- MISSIONS -->
+    <div class="panel-section">
+      <div class="panel-title">📋 任務列表</div>
+      <div class="mission-list" id="mission-list"></div>
+    </div>
+
+    <!-- ACHIEVEMENTS -->
+    <div class="panel-section">
+      <div class="panel-title">🏆 成就榜</div>
+      <div class="achievement-list" id="ach-list"></div>
+    </div>
+
+  </div>
+
+  <!-- MOBILE TOOLBAR -->
+  <div id="mobile-toolbar">
+    <button class="mob-tool-btn active" id="mob-tool-protractor" onclick="setTool('protractor')">
+      <span class="mtb-icon">📐</span>量角器
+    </button>
+    <button class="mob-tool-btn" id="mob-tool-compass" onclick="setTool('compass')">
+      <span class="mtb-icon">🔵</span>圓規
+    </button>
+    <button class="mob-tool-btn" id="mob-tool-rect" onclick="setTool('rect')">
+      <span class="mtb-icon">⬜</span>矩形
+    </button>
+    <button class="mob-tool-btn" id="mob-tool-rotate" onclick="setTool('rotate')">
+      <span class="mtb-icon">🔄</span>旋轉
+    </button>
+    <button class="mob-tool-btn" id="mob-tool-submit" onclick="submitShape()">
+      <span class="mtb-icon">✅</span>提交
+    </button>
+  </div>
+
+</div>
+
+<!-- MODAL -->
+<div id="modal-overlay">
+  <div id="modal-box">
+    <div class="modal-title" id="modal-title">🎉 任務完成！</div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-actions">
+      <button class="action-btn primary" id="modal-ok" onclick="closeModal()">繼續冒險 🚀</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+//  GAME DATA
+// ═══════════════════════════════════════════════════════════
+
+const MISSIONS = [
+  {
+    id: 0, icon: '🕐', title: '旋轉臂時鐘', tool: 'protractor',
+    text: '請製作一個 <strong>90°</strong> 的角（直角）來修復時鐘零件',
+    target: { type: 'angle', value: 90, tolerance: 8 },
+    hint: '90° 就是像書本角落一樣的直角！',
+    color: '#4ecdc4', points: 100
+  },
+  {
+    id: 1, icon: '🔵', title: '圓形窗戶', tool: 'compass',
+    text: '請畫出 <strong>半徑 5cm</strong> 的圓形來修復圓窗',
+    target: { type: 'circle', value: 5, tolerance: 0.8 },
+    hint: '半徑是從圓心到邊緣的距離！',
+    color: '#a78bfa', points: 120
+  },
+  {
+    id: 2, icon: '⬜', title: '方形磚塊', tool: 'rect',
+    text: '請製作一個 <strong>邊長 6cm</strong> 的正方形磚塊',
+    target: { type: 'square', value: 6, tolerance: 0.8 },
+    hint: '正方形四條邊都一樣長！',
+    color: '#f7c948', points: 110
+  },
+  {
+    id: 3, icon: '📏', title: '長方形門', tool: 'rect',
+    text: '請製作一個 <strong>寬 6cm、高 10cm</strong> 的長方形門',
+    target: { type: 'rect', w: 6, h: 10, tolerance: 0.8 },
+    hint: '長方形的對邊相等哦！',
+    color: '#ff6b6b', points: 130
+  },
+  {
+    id: 4, icon: '🔄', title: '旋轉屋頂', tool: 'rotate',
+    text: '請將三角形旋轉 <strong>45°</strong> 來安裝屋頂',
+    target: { type: 'rotation', value: 45, tolerance: 6 },
+    hint: '45° 是直角的一半！',
+    color: '#6fcf97', points: 150
+  },
+  {
+    id: 5, icon: '🌀', title: '大角度牆', tool: 'protractor',
+    text: '請製作一個 <strong>135°</strong> 的鈍角來修復牆壁',
+    target: { type: 'angle', value: 135, tolerance: 8 },
+    hint: '135° 比直角還要大！',
+    color: '#f7c948', points: 160
+  },
+  {
+    id: 6, icon: '🔵', title: '大圓頂', tool: 'compass',
+    text: '請畫出 <strong>半徑 8cm</strong> 的圓頂',
+    target: { type: 'circle', value: 8, tolerance: 0.8 },
+    hint: '比第一個圓還要大！',
+    color: '#4ecdc4', points: 140
+  },
+  {
+    id: 7, icon: '🔄', title: '旋轉鑰匙', tool: 'rotate',
+    text: '請將圖形旋轉 <strong>180°</strong>',
+    target: { type: 'rotation', value: 180, tolerance: 8 },
+    hint: '180° 就是完全翻轉！',
+    color: '#a78bfa', points: 200
+  },
+];
+
+const ACHIEVEMENTS = [
+  { id: 'first', icon: '⭐', name: '初次嘗試', desc: '完成第一個任務', done: false },
+  { id: 'angle_master', icon: '📐', name: '角度大師', desc: '完成 2 個角度任務', done: false },
+  { id: 'circle_pro', icon: '⭕', name: '圓形專家', desc: '完成 2 個圓形任務', done: false },
+  { id: 'builder', icon: '🏗️', name: '建築師', desc: '完成 5 個任務', done: false },
+  { id: 'perfect', icon: '💎', name: '完美修復', desc: '完成所有 8 個任務', done: false },
+];
+
+// ═══════════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════════
+
+let state = {
+  tool: 'protractor',
+  currentMission: 0,
+  score: 0,
+  completedMissions: [],
+  completedAchievements: [],
+  // canvas transform
+  offsetX: 0, offsetY: 0,
+  scale: 1,
+  // drawn shape
+  shape: null,
+  shapeAngle: 0, // for rotation tool
+  // protractor dragging
+  draggingArm: false,
+  protractorAngle: 90,
+  // canvas center (placed shape)
+  shapePlaced: false,
+  shapeCenterX: 0,
+  shapeCenterY: 0,
+  // pan
+  panning: false,
+  panStartX: 0, panStartY: 0,
+  panOffX: 0, panOffY: 0,
+  // pinch
+  pinching: false,
+  pinchDist: 0,
+  pinchScale: 1,
+};
+
+const PX_PER_CM = 40; // 1cm = 40px at scale=1
+
+// ═══════════════════════════════════════════════════════════
+//  CANVAS SETUP
+// ═══════════════════════════════════════════════════════════
+
+const canvas = document.getElementById('main-canvas');
+const ctx = canvas.getContext('2d');
+
+function resizeCanvas() {
+  const wrap = document.getElementById('stage-wrap');
+  canvas.width = wrap.clientWidth;
+  canvas.height = wrap.clientHeight;
+  if (!state.shapePlaced) {
+    state.shapeCenterX = canvas.width / 2;
+    state.shapeCenterY = canvas.height / 2;
+  }
+  render();
+}
+window.addEventListener('resize', resizeCanvas);
+
+// ═══════════════════════════════════════════════════════════
+//  RENDER
+// ═══════════════════════════════════════════════════════════
+
+function render() {
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+
+  // Background
+  ctx.fillStyle = '#0f0e1a';
+  ctx.fillRect(0, 0, w, h);
+
+  ctx.save();
+  ctx.translate(state.offsetX, state.offsetY);
+  ctx.scale(state.scale, state.scale);
+
+  drawGrid(w, h);
+
+  const mission = MISSIONS[state.currentMission];
+
+  // Draw target ghost
+  drawTargetGhost(mission);
+
+  // Draw current shape
+  if (state.tool === 'protractor') drawProtractor(mission);
+  else if (state.tool === 'compass') drawCompass(mission);
+  else if (state.tool === 'rect') drawRect(mission);
+  else if (state.tool === 'rotate') drawRotateShape(mission);
+
+  ctx.restore();
+}
+
+function drawGrid(w, h) {
+  const step = PX_PER_CM;
+  const iw = w / state.scale;
+  const ih = h / state.scale;
+  const ox = -state.offsetX / state.scale;
+  const oy = -state.offsetY / state.scale;
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+  ctx.lineWidth = 1;
+
+  const sx = Math.floor(ox / step) * step;
+  for (let x = sx; x < ox + iw; x += step) {
+    ctx.beginPath(); ctx.moveTo(x, oy); ctx.lineTo(x, oy + ih); ctx.stroke();
+  }
+  const sy = Math.floor(oy / step) * step;
+  for (let y = sy; y < oy + ih; y += step) {
+    ctx.beginPath(); ctx.moveTo(ox, y); ctx.lineTo(ox + iw, y); ctx.stroke();
+  }
+
+  // Axis
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(ox, 0); ctx.lineTo(ox + iw, 0); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, oy); ctx.lineTo(0, oy + ih); ctx.stroke();
+
+  // Labels
+  ctx.fillStyle = 'rgba(255,255,255,0.18)';
+  ctx.font = `${11 / state.scale}px Nunito`;
+  for (let x = sx; x < ox + iw; x += step * 2) {
+    const label = Math.round(x / step);
+    if (label !== 0) ctx.fillText(label + 'cm', x + 2, oy + 14 / state.scale);
+  }
+}
+
+function drawTargetGhost(mission) {
+  if (!mission) return;
+  const cx = state.shapeCenterX / state.scale - state.offsetX / state.scale;
+  const cy = state.shapeCenterY / state.scale - state.offsetY / state.scale;
+
+  ctx.save();
+  ctx.globalAlpha = 0.15;
+  ctx.strokeStyle = mission.color;
+  ctx.lineWidth = 3 / state.scale;
+  ctx.setLineDash([8 / state.scale, 6 / state.scale]);
+
+  const t = mission.target;
+  if (t.type === 'angle') {
+    const r = 100 / state.scale;
+    const a = (t.value * Math.PI) / 180;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + r, cy);
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + r * Math.cos(-a), cy + r * Math.sin(-a));
+    ctx.arc(cx, cy, r * 0.4, 0, -a, true);
+    ctx.stroke();
+  } else if (t.type === 'circle') {
+    const r = t.value * PX_PER_CM / state.scale;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.stroke();
+  } else if (t.type === 'square') {
+    const s = t.value * PX_PER_CM / state.scale;
+    ctx.strokeRect(cx - s / 2, cy - s / 2, s, s);
+  } else if (t.type === 'rect') {
+    const rw = t.w * PX_PER_CM / state.scale;
+    const rh = t.h * PX_PER_CM / state.scale;
+    ctx.strokeRect(cx - rw / 2, cy - rh / 2, rw, rh);
+  } else if (t.type === 'rotation') {
+    const sz = 60 / state.scale;
+    ctx.translate(cx, cy);
+    ctx.rotate((t.value * Math.PI) / 180);
+    ctx.strokeRect(-sz, -sz, sz * 2, sz);
+    ctx.rotate(-(t.value * Math.PI) / 180);
+  }
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+function drawProtractor(mission) {
+  const cx = state.shapeCenterX / state.scale - state.offsetX / state.scale;
+  const cy = state.shapeCenterY / state.scale - state.offsetY / state.scale;
+  const r = 120 / state.scale;
+  const a = state.protractorAngle;
+  const aRad = (a * Math.PI) / 180;
+
+  // Semicircle body
+  ctx.save();
+  ctx.strokeStyle = 'rgba(247,201,72,0.4)';
+  ctx.fillStyle = 'rgba(247,201,72,0.05)';
+  ctx.lineWidth = 2 / state.scale;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, Math.PI, 0);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // Tick marks
+  for (let i = 0; i <= 180; i += 10) {
+    const rad = (i * Math.PI) / 180;
+    const inner = i % 90 === 0 ? 0.8 : i % 30 === 0 ? 0.85 : 0.9;
+    ctx.strokeStyle = 'rgba(247,201,72,0.5)';
+    ctx.lineWidth = 1 / state.scale;
+    ctx.beginPath();
+    ctx.moveTo(cx + r * Math.cos(Math.PI - rad), cy + r * Math.sin(Math.PI - rad) * -1 + r * Math.sin(Math.PI - rad) - r * Math.sin(Math.PI - rad));
+
+    const lx1 = cx + r * Math.cos(Math.PI + rad) * -1;
+    const ly1 = cy - r * Math.sin(rad);
+    const lx2 = cx + r * inner * Math.cos(Math.PI + rad) * -1;
+    const ly2 = cy - r * inner * Math.sin(rad);
+    ctx.moveTo(lx1, ly1); ctx.lineTo(lx2, ly2);
+    ctx.stroke();
+
+    if (i % 30 === 0) {
+      ctx.fillStyle = 'rgba(247,201,72,0.6)';
+      ctx.font = `${10 / state.scale}px Nunito`;
+      ctx.textAlign = 'center';
+      const tx = cx + (r - 18 / state.scale) * Math.cos(Math.PI + rad) * -1;
+      const ty = cy - (r - 18 / state.scale) * Math.sin(rad) + 4 / state.scale;
+      ctx.fillText(i + '°', tx, ty);
+    }
+  }
+
+  // Fixed arm (0°)
+  ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+  ctx.lineWidth = 2 / state.scale;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx + r * 1.1, cy);
+  ctx.stroke();
+
+  // Moving arm
+  ctx.strokeStyle = '#f7c948';
+  ctx.lineWidth = 3 / state.scale;
+  ctx.shadowColor = '#f7c948';
+  ctx.shadowBlur = 8;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx + r * 1.1 * Math.cos(-aRad), cy + r * 1.1 * Math.sin(-aRad));
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Angle arc
+  ctx.strokeStyle = '#4ecdc4';
+  ctx.lineWidth = 2.5 / state.scale;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r * 0.35, 0, -aRad, aRad > 0 ? true : false);
+  ctx.stroke();
+
+  // Center dot
+  ctx.fillStyle = '#f7c948';
+  ctx.beginPath();
+  ctx.arc(cx, cy, 6 / state.scale, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Arm knob
+  ctx.fillStyle = '#4ecdc4';
+  ctx.beginPath();
+  ctx.arc(cx + r * 1.1 * Math.cos(-aRad), cy + r * 1.1 * Math.sin(-aRad), 8 / state.scale, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+
+  // HUD
+  const hud = document.getElementById('angle-hud');
+  hud.style.display = 'flex';
+  document.getElementById('hud-angle').textContent = Math.round(a) + '°';
+}
+
+function drawCompass(mission) {
+  const cx = state.shapeCenterX / state.scale - state.offsetX / state.scale;
+  const cy = state.shapeCenterY / state.scale - state.offsetY / state.scale;
+  const rInput = parseFloat(document.getElementById('input-radius').value) || 5;
+  const r = rInput * PX_PER_CM / state.scale;
+
+  ctx.save();
+  // Circle
+  ctx.strokeStyle = '#a78bfa';
+  ctx.lineWidth = 3 / state.scale;
+  ctx.shadowColor = '#a78bfa';
+  ctx.shadowBlur = 12;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Fill
+  ctx.fillStyle = 'rgba(167,139,250,0.07)';
+  ctx.fill();
+
+  // Radius line
+  ctx.strokeStyle = 'rgba(167,139,250,0.6)';
+  ctx.lineWidth = 1.5 / state.scale;
+  ctx.setLineDash([5 / state.scale, 5 / state.scale]);
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx + r, cy);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Label radius
+  ctx.fillStyle = '#a78bfa';
+  ctx.font = `bold ${12 / state.scale}px Nunito`;
+  ctx.textAlign = 'center';
+  ctx.fillText('r = ' + rInput + 'cm', cx + r / 2, cy - 8 / state.scale);
+
+  // Center
+  ctx.fillStyle = '#f7c948';
+  ctx.beginPath();
+  ctx.arc(cx, cy, 6 / state.scale, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawRect(mission) {
+  const cx = state.shapeCenterX / state.scale - state.offsetX / state.scale;
+  const cy = state.shapeCenterY / state.scale - state.offsetY / state.scale;
+  const w = (parseFloat(document.getElementById('input-width').value) || 8) * PX_PER_CM / state.scale;
+  const h = (parseFloat(document.getElementById('input-height').value) || 5) * PX_PER_CM / state.scale;
+
+  ctx.save();
+  ctx.strokeStyle = '#f7c948';
+  ctx.lineWidth = 3 / state.scale;
+  ctx.shadowColor = '#f7c948';
+  ctx.shadowBlur = 10;
+  ctx.fillStyle = 'rgba(247,201,72,0.07)';
+  ctx.fillRect(cx - w / 2, cy - h / 2, w, h);
+  ctx.strokeRect(cx - w / 2, cy - h / 2, w, h);
+  ctx.shadowBlur = 0;
+
+  // Corner marks
+  const cs = 10 / state.scale;
+  ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+  ctx.lineWidth = 1.5 / state.scale;
+  [[cx - w / 2, cy - h / 2, 1, 1], [cx + w / 2, cy - h / 2, -1, 1],
+   [cx + w / 2, cy + h / 2, -1, -1], [cx - w / 2, cy + h / 2, 1, -1]].forEach(([x, y, dx, dy]) => {
+    ctx.beginPath();
+    ctx.moveTo(x + cs * dx, y);
+    ctx.lineTo(x, y);
+    ctx.lineTo(x, y + cs * dy);
+    ctx.stroke();
+  });
+
+  // Dimension labels
+  ctx.fillStyle = '#f7c948';
+  ctx.font = `bold ${11 / state.scale}px Nunito`;
+  ctx.textAlign = 'center';
+  const wCm = parseFloat(document.getElementById('input-width').value) || 8;
+  const hCm = parseFloat(document.getElementById('input-height').value) || 5;
+  ctx.fillText(wCm + 'cm', cx, cy - h / 2 - 8 / state.scale);
+  ctx.save();
+  ctx.translate(cx + w / 2 + 14 / state.scale, cy);
+  ctx.rotate(Math.PI / 2);
+  ctx.fillText(hCm + 'cm', 0, 0);
+  ctx.restore();
+
+  ctx.restore();
+}
+
+function drawRotateShape(mission) {
+  const cx = state.shapeCenterX / state.scale - state.offsetX / state.scale;
+  const cy = state.shapeCenterY / state.scale - state.offsetY / state.scale;
+  const a = state.shapeAngle;
+  const aRad = (a * Math.PI) / 180;
+  const sz = 60 / state.scale;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(aRad);
+
+  // Triangle (roof shape)
+  ctx.strokeStyle = '#6fcf97';
+  ctx.lineWidth = 3 / state.scale;
+  ctx.fillStyle = 'rgba(111,207,151,0.1)';
+  ctx.shadowColor = '#6fcf97';
+  ctx.shadowBlur = 10;
+  ctx.beginPath();
+  ctx.moveTo(0, -sz * 1.2);
+  ctx.lineTo(sz, sz * 0.6);
+  ctx.lineTo(-sz, sz * 0.6);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Rotation indicator arc
+  ctx.strokeStyle = 'rgba(111,207,151,0.5)';
+  ctx.lineWidth = 1.5 / state.scale;
+  ctx.setLineDash([4 / state.scale, 4 / state.scale]);
+  ctx.beginPath();
+  ctx.arc(0, 0, sz * 1.4, -Math.PI / 2, -Math.PI / 2 + aRad);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.restore();
+
+  // Angle label
+  ctx.save();
+  ctx.fillStyle = '#6fcf97';
+  ctx.font = `bold ${13 / state.scale}px Nunito`;
+  ctx.textAlign = 'center';
+  ctx.fillText(Math.round(a) + '°', cx, cy - sz * 1.7);
+  ctx.restore();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  TOOLS
+// ═══════════════════════════════════════════════════════════
+
+function setTool(tool) {
+  state.tool = tool;
+
+  // Update desktop tool btns
+  document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+  const tb = document.getElementById('tool-' + tool);
+  if (tb) tb.classList.add('active');
+
+  // Update mobile btns
+  document.querySelectorAll('.mob-tool-btn').forEach(b => b.classList.remove('active'));
+  const mb = document.getElementById('mob-tool-' + tool);
+  if (mb) mb.classList.add('active');
+
+  // Update property panels
+  document.getElementById('prop-angle').style.display = tool === 'protractor' ? '' : 'none';
+  document.getElementById('prop-radius').style.display = tool === 'compass' ? '' : 'none';
+  document.getElementById('prop-rect').style.display = tool === 'rect' ? '' : 'none';
+  document.getElementById('prop-rotate').style.display = tool === 'rotate' ? '' : 'none';
+
+  document.getElementById('angle-hud').style.display = 'none';
+
+  // Auto-switch for mission
+  const m = MISSIONS[state.currentMission];
+  if (m && m.tool !== tool && tool !== 'move' && tool !== 'erase') {
+    // just allow any tool
+  }
+
+  render();
+}
+
+function updateProtractorAngle(v) {
+  state.protractorAngle = v;
+  render();
+}
+
+function updateRotateAngle(v) {
+  state.shapeAngle = v;
+  render();
+}
+
+function clearAll() {
+  state.shape = null;
+  state.protractorAngle = 90;
+  state.shapeAngle = 0;
+  document.getElementById('slider-angle').value = 90;
+  document.getElementById('input-angle').value = 90;
+  document.getElementById('slider-rotate').value = 0;
+  document.getElementById('input-rotate').value = 0;
+  render();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  SUBMIT & VALIDATE
+// ═══════════════════════════════════════════════════════════
+
+function submitShape() {
+  const mission = MISSIONS[state.currentMission];
+  if (!mission) return;
+
+  const t = mission.target;
+  let correct = false;
+  let studentVal = 0;
+  let targetVal = 0;
+  let diff = 0;
+
+  if (t.type === 'angle') {
+    studentVal = state.protractorAngle;
+    targetVal = t.value;
+    diff = Math.abs(studentVal - targetVal);
+    correct = diff <= t.tolerance;
+  } else if (t.type === 'circle') {
+    studentVal = parseFloat(document.getElementById('input-radius').value) || 0;
+    targetVal = t.value;
+    diff = Math.abs(studentVal - targetVal);
+    correct = diff <= t.tolerance;
+  } else if (t.type === 'square') {
+    const w = parseFloat(document.getElementById('input-width').value) || 0;
+    const h = parseFloat(document.getElementById('input-height').value) || 0;
+    correct = Math.abs(w - t.value) <= t.tolerance && Math.abs(h - t.value) <= t.tolerance;
+    studentVal = w; targetVal = t.value; diff = Math.abs(w - t.value);
+  } else if (t.type === 'rect') {
+    const w = parseFloat(document.getElementById('input-width').value) || 0;
+    const h = parseFloat(document.getElementById('input-height').value) || 0;
+    const wOk = Math.abs(w - t.w) <= t.tolerance;
+    const hOk = Math.abs(h - t.h) <= t.tolerance;
+    correct = wOk && hOk;
+    diff = Math.max(Math.abs(w - t.w), Math.abs(h - t.h));
+  } else if (t.type === 'rotation') {
+    studentVal = state.shapeAngle;
+    targetVal = t.value;
+    diff = Math.abs(studentVal - targetVal);
+    correct = diff <= t.tolerance;
+  }
+
+  if (correct) {
+    // ── Correct! ──
+    state.score += mission.points;
+    state.completedMissions.push(state.currentMission);
+    document.getElementById('score-val').textContent = state.score;
+
+    spawnParticles();
+    showFeedback(true, `✨ 零件已修復！+${mission.points} 分`);
+    checkAchievements();
+    renderMissionList();
+    renderAchievements();
+
+    // Advance mission
+    const next = MISSIONS.findIndex((m, i) => i > state.currentMission && !state.completedMissions.includes(i));
+    setTimeout(() => {
+      hideFeedback();
+      if (next >= 0) {
+        loadMission(next);
+      } else {
+        showModal('🏆 全部完成！', `你成功修復了神祕建築！<br>最終分數：<strong style="color:var(--accent)">${state.score}</strong> 分<br><br>你已經掌握了角度、圓形與幾何圖形的知識！`);
+      }
+    }, 1800);
+
+  } else {
+    // ── Wrong ──
+    let hint = '';
+    if (t.type === 'angle') {
+      hint = studentVal < targetVal ? `太小了！再旋轉大一點，目前 ${Math.round(studentVal)}°` : `太大了！再旋轉小一點，目前 ${Math.round(studentVal)}°`;
+    } else if (t.type === 'circle') {
+      hint = studentVal < targetVal ? `太小了！半徑需要再大一點` : `太大了！半徑需要再小一點`;
+    } else if (t.type === 'square') {
+      hint = `正方形的寬和高必須都等於 ${t.value}cm`;
+    } else if (t.type === 'rect') {
+      hint = `寬應為 ${t.w}cm，高應為 ${t.h}cm，再試試！`;
+    } else if (t.type === 'rotation') {
+      hint = studentVal < targetVal ? `旋轉還不夠！目前 ${Math.round(studentVal)}°` : `旋轉太多了！目前 ${Math.round(studentVal)}°`;
+    }
+    showFeedback(false, hint);
+    setTimeout(hideFeedback, 2000);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  MISSIONS
+// ═══════════════════════════════════════════════════════════
+
+function loadMission(idx) {
+  state.currentMission = idx;
+  clearAll();
+  const m = MISSIONS[idx];
+  setTool(m.tool);
+
+  document.getElementById('mission-icon').textContent = m.icon;
+  document.getElementById('mission-text').innerHTML = m.text;
+
+  renderMissionList();
+  render();
+}
+
+function renderMissionList() {
+  const el = document.getElementById('mission-list');
+  el.innerHTML = '';
+  MISSIONS.forEach((m, i) => {
+    const done = state.completedMissions.includes(i);
+    const active = i === state.currentMission;
+    const div = document.createElement('div');
+    div.className = 'mission-item' + (active ? ' active' : '') + (done ? ' done' : '');
+    div.innerHTML = `<div class="mission-title">${m.icon} ${m.title} ${done ? '✅' : ''}</div>
+      <div class="mission-sub">${m.points} 分 · ${['量角器','圓規','矩形','旋轉'][['protractor','compass','rect','rotate'].indexOf(m.tool)]}</div>`;
+    if (!done) div.onclick = () => loadMission(i);
+    el.appendChild(div);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+//  ACHIEVEMENTS
+// ═══════════════════════════════════════════════════════════
+
+function checkAchievements() {
+  const completed = state.completedMissions;
+  const ach = ACHIEVEMENTS;
+
+  if (completed.length >= 1) ach.find(a => a.id === 'first').done = true;
+  const angleMissions = completed.filter(i => MISSIONS[i].target.type === 'angle');
+  if (angleMissions.length >= 2) ach.find(a => a.id === 'angle_master').done = true;
+  const circleMissions = completed.filter(i => MISSIONS[i].target.type === 'circle');
+  if (circleMissions.length >= 2) ach.find(a => a.id === 'circle_pro').done = true;
+  if (completed.length >= 5) ach.find(a => a.id === 'builder').done = true;
+  if (completed.length >= 8) ach.find(a => a.id === 'perfect').done = true;
+}
+
+function renderAchievements() {
+  const el = document.getElementById('ach-list');
+  el.innerHTML = '';
+  ACHIEVEMENTS.forEach(a => {
+    const div = document.createElement('div');
+    div.className = 'ach-item' + (a.done ? ' done' : '');
+    div.innerHTML = `<div class="ach-icon">${a.icon}</div>
+      <div class="ach-info">
+        <div class="ach-name">${a.name}</div>
+        <div class="ach-desc">${a.desc}</div>
+      </div>
+      <div class="ach-check">✅</div>`;
+    el.appendChild(div);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+//  FEEDBACK
+// ═══════════════════════════════════════════════════════════
+
+function showFeedback(ok, text) {
+  const b = document.getElementById('feedback-banner');
+  document.getElementById('fb-emoji').textContent = ok ? '🎉' : '🤔';
+  document.getElementById('fb-text').textContent = text;
+  b.className = 'show' + (ok ? '' : ' wrong');
+}
+
+function hideFeedback() {
+  document.getElementById('feedback-banner').className = '';
+}
+
+function spawnParticles() {
+  const wrap = document.getElementById('stage-wrap');
+  const cx = wrap.clientWidth / 2;
+  const cy = wrap.clientHeight / 2;
+  const colors = ['#f7c948', '#4ecdc4', '#a78bfa', '#ff6b6b', '#6fcf97'];
+  for (let i = 0; i < 24; i++) {
+    const el = document.createElement('div');
+    el.className = 'particle';
+    const size = 6 + Math.random() * 10;
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 80 + Math.random() * 140;
+    el.style.cssText = `width:${size}px;height:${size}px;background:${colors[i % colors.length]};left:${cx}px;top:${cy}px;--dx:${Math.cos(angle) * dist}px;--dy:${Math.sin(angle) * dist}px;animation-duration:${0.6 + Math.random() * 0.6}s;`;
+    wrap.appendChild(el);
+    setTimeout(() => el.remove(), 1400);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  MODAL
+// ═══════════════════════════════════════════════════════════
+
+function showModal(title, body) {
+  document.getElementById('modal-title').innerHTML = title;
+  document.getElementById('modal-body').innerHTML = body;
+  document.getElementById('modal-overlay').classList.add('show');
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.remove('show');
+  // Restart if all done
+  if (state.completedMissions.length >= MISSIONS.length) {
+    state.score = 0; state.completedMissions = [];
+    ACHIEVEMENTS.forEach(a => a.done = false);
+    document.getElementById('score-val').textContent = '0';
+    renderAchievements();
+    loadMission(0);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  INPUT — MOUSE
+// ═══════════════════════════════════════════════════════════
+
+let mouseDown = false;
+let dragMode = null; // 'arm' | 'pan'
+
+canvas.addEventListener('mousedown', (e) => {
+  if (e.button !== 0) return;
+  mouseDown = true;
+  const [cx, cy] = canvasToWorld(e.clientX - canvas.getBoundingClientRect().left, e.clientY - canvas.getBoundingClientRect().top);
+
+  if (state.tool === 'protractor') {
+    // Check if near arm tip
+    const scx = state.shapeCenterX / state.scale - state.offsetX / state.scale;
+    const scy = state.shapeCenterY / state.scale - state.offsetY / state.scale;
+    const r = 120 / state.scale;
+    const aRad = (state.protractorAngle * Math.PI) / 180;
+    const tipX = scx + r * 1.1 * Math.cos(-aRad);
+    const tipY = scy + r * 1.1 * Math.sin(-aRad);
+    const dist = Math.hypot(cx - tipX, cy - tipY);
+    if (dist < 30 / state.scale) {
+      dragMode = 'arm';
+    } else {
+      dragMode = 'pan';
+      state.panStartX = e.clientX; state.panStartY = e.clientY;
+      state.panOffX = state.offsetX; state.panOffY = state.offsetY;
+    }
+  } else {
+    dragMode = 'pan';
+    state.panStartX = e.clientX; state.panStartY = e.clientY;
+    state.panOffX = state.offsetX; state.panOffY = state.offsetY;
+  }
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  if (!mouseDown) return;
+  const rect = canvas.getBoundingClientRect();
+  const [cx, cy] = canvasToWorld(e.clientX - rect.left, e.clientY - rect.top);
+
+  if (dragMode === 'arm') {
+    const scx = state.shapeCenterX / state.scale - state.offsetX / state.scale;
+    const scy = state.shapeCenterY / state.scale - state.offsetY / state.scale;
+    let a = -Math.atan2(cy - scy, cx - scx) * 180 / Math.PI;
+    a = ((a % 360) + 360) % 360;
+    if (a > 180) a = 360 - a;
+    state.protractorAngle = Math.round(a);
+    document.getElementById('slider-angle').value = state.protractorAngle;
+    document.getElementById('input-angle').value = state.protractorAngle;
+  } else if (dragMode === 'pan') {
+    state.offsetX = state.panOffX + (e.clientX - state.panStartX);
+    state.offsetY = state.panOffY + (e.clientY - state.panStartY);
+  }
+  render();
+});
+
+canvas.addEventListener('mouseup', () => { mouseDown = false; dragMode = null; });
+canvas.addEventListener('mouseleave', () => { mouseDown = false; dragMode = null; });
+
+// Scroll zoom
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const delta = e.deltaY > 0 ? 0.9 : 1.1;
+  const newScale = Math.max(0.3, Math.min(4, state.scale * delta));
+  state.offsetX = mx - (mx - state.offsetX) * (newScale / state.scale);
+  state.offsetY = my - (my - state.offsetY) * (newScale / state.scale);
+  state.scale = newScale;
+  render();
+}, { passive: false });
+
+// ═══════════════════════════════════════════════════════════
+//  INPUT — TOUCH
+// ═══════════════════════════════════════════════════════════
+
+let touchStartData = null;
+
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  if (e.touches.length === 1) {
+    const t = e.touches[0];
+    const rect = canvas.getBoundingClientRect();
+    touchStartData = {
+      type: 'single',
+      startX: t.clientX, startY: t.clientY,
+      offX: state.offsetX, offY: state.offsetY,
+      armDrag: false,
+    };
+
+    if (state.tool === 'protractor') {
+      const [cx, cy] = canvasToWorld(t.clientX - rect.left, t.clientY - rect.top);
+      const scx = state.shapeCenterX / state.scale - state.offsetX / state.scale;
+      const scy = state.shapeCenterY / state.scale - state.offsetY / state.scale;
+      const r = 120 / state.scale;
+      const aRad = (state.protractorAngle * Math.PI) / 180;
+      const tipX = scx + r * 1.1 * Math.cos(-aRad);
+      const tipY = scy + r * 1.1 * Math.sin(-aRad);
+      if (Math.hypot(cx - tipX, cy - tipY) < 40 / state.scale) {
+        touchStartData.armDrag = true;
+      }
+    }
+  } else if (e.touches.length === 2) {
+    const dx = e.touches[1].clientX - e.touches[0].clientX;
+    const dy = e.touches[1].clientY - e.touches[0].clientY;
+    touchStartData = {
+      type: 'pinch',
+      startDist: Math.hypot(dx, dy),
+      startScale: state.scale,
+      midX: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+      midY: (e.touches[0].clientY + e.touches[1].clientY) / 2,
+      offX: state.offsetX, offY: state.offsetY,
+    };
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  if (!touchStartData) return;
+
+  if (touchStartData.type === 'single' && e.touches.length === 1) {
+    const t = e.touches[0];
+    const rect = canvas.getBoundingClientRect();
+
+    if (touchStartData.armDrag && state.tool === 'protractor') {
+      const [cx, cy] = canvasToWorld(t.clientX - rect.left, t.clientY - rect.top);
+      const scx = state.shapeCenterX / state.scale - state.offsetX / state.scale;
+      const scy = state.shapeCenterY / state.scale - state.offsetY / state.scale;
+      let a = -Math.atan2(cy - scy, cx - scx) * 180 / Math.PI;
+      a = ((a % 360) + 360) % 360;
+      if (a > 180) a = 360 - a;
+      state.protractorAngle = Math.round(a);
+      document.getElementById('slider-angle').value = state.protractorAngle;
+      document.getElementById('input-angle').value = state.protractorAngle;
+    } else {
+      state.offsetX = touchStartData.offX + (t.clientX - touchStartData.startX);
+      state.offsetY = touchStartData.offY + (t.clientY - touchStartData.startY);
+    }
+    render();
+  } else if (touchStartData.type === 'pinch' && e.touches.length === 2) {
+    const dx = e.touches[1].clientX - e.touches[0].clientX;
+    const dy = e.touches[1].clientY - e.touches[0].clientY;
+    const dist = Math.hypot(dx, dy);
+    const newScale = Math.max(0.3, Math.min(4, touchStartData.startScale * dist / touchStartData.startDist));
+    const mx = touchStartData.midX;
+    const my = touchStartData.midY;
+    const rect = canvas.getBoundingClientRect();
+    state.offsetX = mx - rect.left - (mx - rect.left - touchStartData.offX) * (newScale / touchStartData.startScale);
+    state.offsetY = my - rect.top - (my - rect.top - touchStartData.offY) * (newScale / touchStartData.startScale);
+    state.scale = newScale;
+    render();
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchend', () => { touchStartData = null; }, { passive: false });
+
+// ═══════════════════════════════════════════════════════════
+//  INPUT — SLIDER SYNC
+// ═══════════════════════════════════════════════════════════
+
+document.getElementById('input-angle').addEventListener('input', (e) => {
+  const v = Math.max(0, Math.min(360, +e.target.value || 0));
+  state.protractorAngle = v;
+  document.getElementById('slider-angle').value = v;
+  render();
+});
+
+document.getElementById('input-radius').addEventListener('input', () => { render(); });
+document.getElementById('input-width').addEventListener('input', () => { render(); });
+document.getElementById('input-height').addEventListener('input', () => { render(); });
+
+document.getElementById('input-rotate').addEventListener('input', (e) => {
+  const v = Math.max(0, Math.min(360, +e.target.value || 0));
+  state.shapeAngle = v;
+  document.getElementById('slider-rotate').value = v;
+  render();
+});
+
+// ═══════════════════════════════════════════════════════════
+//  HELPERS
+// ═══════════════════════════════════════════════════════════
+
+function canvasToWorld(px, py) {
+  return [(px - state.offsetX) / state.scale, (py - state.offsetY) / state.scale];
+}
+
+// ═══════════════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════════════
+
+function startGame() {
+  document.getElementById('intro-screen').classList.add('hide');
+  setTimeout(() => { document.getElementById('intro-screen').style.display = 'none'; }, 700);
+}
+
+function init() {
+  resizeCanvas();
+  renderMissionList();
+  renderAchievements();
+  loadMission(0);
+}
+
+init();
+</script>
+</body>
+</html>

@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+    <title>四軸無人機操作教學 v0.12 (魁地奇競技場)</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #87CEEB;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            touch-action: none; /* 阻止預設滑動 */
+        }
+        #canvas-container {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        /* UI 介面設計 */
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        .panel {
+            background: rgba(255, 255, 255, 0.9);
+            padding: 15px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            pointer-events: auto;
+            margin: 15px;
+        }
+        .top-ui {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+        .status-box {
+            max-width: 280px;
+        }
+        h2 { margin: 0 0 10px 0; font-size: 1.2rem; color: #333; }
+        
+        /* 計分板樣式 */
+        .scoreboard {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 15px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            background: #eee;
+            padding: 5px 10px;
+            border-radius: 8px;
+        }
+        .score-blue { color: #2980b9; }
+        .score-red { color: #c0392b; }
+
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 8px;
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .btn:disabled { background: #bdc3c7; cursor: not-allowed; }
+        .btn:active:not(:disabled) { background: #2980b9; }
+        .btn-success { background: #2ecc71; }
+        
+        .instructions {
+            font-size: 0.8rem;
+            color: #444;
+            margin-top: 10px;
+            line-height: 1.4;
+        }
+
+        /* 虛擬搖桿區塊 */
+        .joystick-container {
+            display: flex;
+            justify-content: space-between;
+            padding: 20px 40px;
+            margin-bottom: 80px; /* 大幅提高控制區，避免太貼近螢幕底部 */
+        }
+        .joystick-zone {
+            width: 150px;
+            height: 150px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.6);
+            border-radius: 50%;
+            position: relative;
+            pointer-events: auto;
+            touch-action: none;
+        }
+        .joystick-knob {
+            width: 50px;
+            height: 50px;
+            background: rgba(52, 152, 219, 0.8);
+            border-radius: 50%;
+            position: absolute;
+            top: 50px;
+            left: 50px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            pointer-events: none;
+        }
+        .joystick-label {
+            position: absolute;
+            top: -35px;
+            width: 100%;
+            text-align: center;
+            color: white;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px black;
+            font-size: 0.9rem;
+        }
+        
+        #crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 20px;
+            height: 20px;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            display: none;
+        }
+        #crosshair::before, #crosshair::after {
+            content: '';
+            position: absolute;
+            background: rgba(255,255,255,0.7);
+        }
+        #crosshair::before { top: 9px; left: 0; width: 20px; height: 2px; }
+        #crosshair::after { top: 0; left: 9px; width: 2px; height: 20px; }
+
+        /* 手機版響應式縮小介面 */
+        @media (max-width: 600px) {
+            .panel { padding: 8px; margin: 8px; }
+            h2 { font-size: 1rem; margin-bottom: 5px; }
+            .scoreboard { font-size: 1rem; margin-bottom: 5px; padding: 2px 5px; }
+            .btn { padding: 6px; font-size: 0.85rem; margin-bottom: 5px; }
+            .instructions { font-size: 0.7rem; margin-top: 5px; }
+            .joystick-container { padding: 10px 20px; margin-bottom: 70px; } /* 提高手機版控制區，防誤觸系統橫條 */
+            .joystick-zone { width: 100px; height: 100px; }
+            .joystick-knob { width: 40px; height: 40px; top: 30px; left: 30px; }
+            .joystick-label { font-size: 0.75rem; top: -25px; }
+        }
+
+    </style>
+    <!-- 載入 Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+    <div id="crosshair"></div>
+
+    <div id="ui-layer">
+        <div class="top-ui">
+            <div class="panel status-box">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <h2>無人機足球競技</h2>
+                    <button id="btn-toggle-ui" style="background:none;border:none;font-size:1.2rem;cursor:pointer;padding:0;line-height:1;">➖</button>
+                </div>
+                
+                <div class="scoreboard">
+                    <div class="score-blue">藍方: <span id="score-blue-val">0</span></div>
+                    <div>vs</div>
+                    <div class="score-red">紅方: <span id="score-red-val">0</span></div>
+                </div>
+
+                <div id="action-buttons" style="display: flex; gap: 5px; margin-bottom: 5px;">
+                    <button id="btn-tilt" class="btn" style="background:#f39c12; margin-bottom: 0;">📱 體感</button>
+                    <button id="btn-view" class="btn" style="display:none; background:#9b59b6; margin-bottom: 0;">FPV 視角</button>
+                </div>
+                
+                <div id="setup-group">
+                    <div id="status-text" style="color: #e74c3c; font-weight: bold; margin-bottom: 10px;">狀態: 未就緒</div>
+                    <button id="btn-prop" class="btn">1. 安裝螺旋槳</button>
+                    <button id="btn-batt" class="btn">2. 安裝電池</button>
+                    
+                    <div class="instructions">
+                        💡 <b>操作方式 (美國手/Mode 2)：</b><br>
+                        [左搖桿] 或 <b>W/S</b>：油門升降<br>
+                        [左搖桿] 或 <b>A/D</b>：偏航左右轉<br>
+                        [右搖桿] / <b>方向鍵</b> / <b>手機傾斜</b>：水平平移<br>
+                        🏆 目標：將無人機穿過敵方高空圓環得分！
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="joystick-container">
+            <div id="joy-left" class="joystick-zone">
+                <div class="joystick-label">油門/偏航<br>(W A S D)</div>
+                <div id="knob-left" class="joystick-knob"></div>
+            </div>
+            <div id="joy-right" class="joystick-zone">
+                <div class="joystick-label">俯仰/滾轉<br>(方向鍵)</div>
+                <div id="knob-right" class="joystick-knob"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 遊戲狀態與變數 ---
+        let hasProps = false;
+        let hasBattery = false;
+        let isReady = false;
+        let scoreBlue = 0;
+        let scoreRed = 0;
+        let viewMode = 0; // 0: 第三人稱, 1: FPV
+        let cameraZoom = 15; 
+
+        // 觸控/滑鼠輸入 (原始值)
+        const joyInputs = { throttle: 0, yaw: 0, pitch: 0, roll: 0 };
+        // 鍵盤輸入 (原始值)
+        const kbdInputs = { throttle: 0, yaw: 0, pitch: 0, roll: 0 };
+        // 體感輸入 (手機傾斜)
+        const tiltInputs = { pitch: 0, roll: 0 };
+        let tiltEnabled = false;
+        let baseBeta = null;
+        let baseGamma = null;
+        // 最終平滑運算後的飛行輸入
+        const flightInputs = { throttle: 0, yaw: 0, pitch: 0, roll: 0 };
+
+        // --- Three.js 基礎設定 ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB);
+        scene.fog = new THREE.FogExp2(0x87CEEB, 0.01);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        container.appendChild(renderer.domElement);
+
+        // --- 光源 ---
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(50, 100, 50);
+        dirLight.castShadow = true;
+        dirLight.shadow.camera.top = 100;
+        dirLight.shadow.camera.bottom = -100;
+        dirLight.shadow.camera.left = -100;
+        dirLight.shadow.camera.right = 100;
+        scene.add(dirLight);
+
+        // --- 競技場地 (足球場地) ---
+        const groundGeo = new THREE.PlaneGeometry(200, 300);
+        const groundMat = new THREE.MeshLambertMaterial({ color: 0x2e7d32 });
+        const ground = new THREE.Mesh(groundGeo, groundMat);
+        ground.rotation.x = -Math.PI / 2;
+        ground.receiveShadow = true;
+        scene.add(ground);
+
+        // 紅色禁區 (地上紅色)
+        const redZoneMat = new THREE.MeshLambertMaterial({ color: 0xc0392b });
+        const redZone = new THREE.Mesh(new THREE.PlaneGeometry(60, 40), redZoneMat);
+        redZone.rotation.x = -Math.PI / 2;
+        redZone.position.set(0, 0.05, -80);
+        redZone.receiveShadow = true;
+        scene.add(redZone);
+
+        // 藍色禁區 (地上藍色)
+        const blueZoneMat = new THREE.MeshLambertMaterial({ color: 0x2980b9 });
+        const blueZone = new THREE.Mesh(new THREE.PlaneGeometry(60, 40), blueZoneMat);
+        blueZone.rotation.x = -Math.PI / 2;
+        blueZone.position.set(0, 0.05, 80);
+        blueZone.receiveShadow = true;
+        scene.add(blueZone);
+
+        // 球場中線
+        const centerLineGeo = new THREE.PlaneGeometry(120, 1);
+        const centerLineMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+        const centerLine = new THREE.Mesh(centerLineGeo, centerLineMat);
+        centerLine.rotation.x = -Math.PI / 2;
+        centerLine.position.y = 0.02;
+        scene.add(centerLine);
+
+        // --- 建立高空圓形球門 (魁地奇風格) ---
+        const hoops = [];
+        function createHoop(colorHex, x, y, z, isRed) {
+            const group = new THREE.Group();
+            
+            // 圓環本體
+            const ringGeo = new THREE.TorusGeometry(3, 0.4, 16, 50);
+            const ringMat = new THREE.MeshLambertMaterial({ 
+                color: colorHex, emissive: colorHex, emissiveIntensity: 0.5, transparent: true, opacity: 0.9 
+            });
+            const ring = new THREE.Mesh(ringGeo, ringMat);
+            ring.position.y = y;
+            group.add(ring);
+            
+            // 為了保持球門在高空，底部加一個對齊地面的發光點與微光柱
+            const indicatorGeo = new THREE.CircleGeometry(1.5, 16);
+            const indicatorMat = new THREE.MeshBasicMaterial({ color: colorHex, transparent: true, opacity: 0.3 });
+            const indicator = new THREE.Mesh(indicatorGeo, indicatorMat);
+            indicator.rotation.x = -Math.PI / 2;
+            indicator.position.y = 0.05;
+            group.add(indicator);
+
+            group.position.set(x, 0, z);
+            scene.add(group);
+            
+            hoops.push({ 
+                x, y, z, radius: 3, isRed, active: true, ringMesh: ring 
+            });
+        }
+
+        // 紅方陣地 (z = -40)
+        createHoop(0xff3333, -12, 10, -40, true);
+        createHoop(0xff3333, 0, 16, -40, true);
+        createHoop(0xff3333, 12, 10, -40, true);
+
+        // 藍方陣地 (z = 40)
+        createHoop(0x3333ff, -12, 10, 40, false);
+        createHoop(0x3333ff, 0, 16, 40, false);
+        createHoop(0x3333ff, 12, 10, 40, false);
+
+        // --- 建立無人機模型 ---
+        const drone = new THREE.Group();
+        drone.position.set(0, 0.5, 30); // 初始生成於藍方半場
+        scene.add(drone);
+
+        const bodyGeo = new THREE.BoxGeometry(1.2, 0.4, 1.2);
+        const bodyMat = new THREE.MeshLambertMaterial({ color: 0x333333 });
+        const body = new THREE.Mesh(bodyGeo, bodyMat);
+        body.castShadow = true;
+        drone.add(body);
+
+        // 機頭指示 (藍色標記，因為我們是藍隊)
+        const frontGeo = new THREE.BoxGeometry(1.25, 0.45, 0.2);
+        const frontMat = new THREE.MeshLambertMaterial({ color: 0x3498db });
+        const front = new THREE.Mesh(frontGeo, frontMat);
+        front.position.z = -0.55;
+        drone.add(front);
+
+        const armGeo = new THREE.CylinderGeometry(0.1, 0.1, 2.8);
+        const armMat = new THREE.MeshLambertMaterial({ color: 0xaaaaaa });
+        const arm1 = new THREE.Mesh(armGeo, armMat);
+        arm1.rotation.y = Math.PI / 4;
+        arm1.rotation.z = Math.PI / 2;
+        drone.add(arm1);
+        const arm2 = new THREE.Mesh(armGeo, armMat);
+        arm2.rotation.y = -Math.PI / 4;
+        arm2.rotation.z = Math.PI / 2;
+        drone.add(arm2);
+
+        // 螺旋槳配置 (X型配置：對角線轉向相同，抵銷扭矩)
+        const propsData = [
+            { x: -1, z: -1, dir: 1 },  // 左前 (CW)
+            { x: 1,  z: -1, dir: -1 }, // 右前 (CCW)
+            { x: -1, z: 1,  dir: -1 }, // 左後 (CCW)
+            { x: 1,  z: 1,  dir: 1 }   // 右後 (CW)
+        ];
+        
+        propsData.forEach(p => {
+            const motorGeo = new THREE.CylinderGeometry(0.2, 0.2, 0.3);
+            const motorMat = new THREE.MeshLambertMaterial({ color: 0x111111 });
+            const motor = new THREE.Mesh(motorGeo, motorMat);
+            motor.position.set(p.x, 0.15, p.z);
+            drone.add(motor);
+
+            // 槳葉 (加了白色兩端以便觀察旋轉方向)
+            const propGroup = new THREE.Group();
+            const bladeGeo = new THREE.BoxGeometry(1.4, 0.05, 0.1);
+            const bladeMat = new THREE.MeshLambertMaterial({ color: 0x000000 });
+            const blade = new THREE.Mesh(bladeGeo, bladeMat);
+            propGroup.add(blade);
+            
+            const tipGeo = new THREE.BoxGeometry(0.2, 0.06, 0.12);
+            const tipMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            const tip1 = new THREE.Mesh(tipGeo, tipMat);
+            tip1.position.x = 0.6;
+            const tip2 = new THREE.Mesh(tipGeo, tipMat);
+            tip2.position.x = -0.6;
+            propGroup.add(tip1);
+            propGroup.add(tip2);
+
+            propGroup.position.set(p.x, 0.3, p.z);
+            propGroup.visible = false;
+            drone.add(propGroup);
+            p.mesh = propGroup; // 綁定網格以供旋轉控制
+        });
+
+        // --- UI 互動邏輯 ---
+        const btnProp = document.getElementById('btn-prop');
+        const btnBatt = document.getElementById('btn-batt');
+        const btnTilt = document.getElementById('btn-tilt');
+        const btnView = document.getElementById('btn-view');
+        const statusText = document.getElementById('status-text');
+        const crosshair = document.getElementById('crosshair');
+        const setupGroup = document.getElementById('setup-group');
+        const btnToggleUI = document.getElementById('btn-toggle-ui');
+
+        // 介面收合邏輯
+        btnToggleUI.addEventListener('click', () => {
+            if (setupGroup.style.display === 'none') {
+                setupGroup.style.display = 'block';
+                btnToggleUI.innerText = '➖';
+            } else {
+                setupGroup.style.display = 'none';
+                btnToggleUI.innerText = '➕';
+            }
+        });
+
+        // 手機體感傾斜控制邏輯
+        btnTilt.addEventListener('click', () => {
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                // iOS 13+ 需要取得使用者授權
+                DeviceOrientationEvent.requestPermission()
+                    .then(permissionState => {
+                        if (permissionState === 'granted') enableTilt();
+                        else alert('需要同意感測器權限才能使用體感控制');
+                    }).catch(console.error);
+            } else {
+                // 非 iOS 13+ 裝置直接啟用
+                enableTilt();
+            }
+        });
+
+        function enableTilt() {
+            if (!tiltEnabled) {
+                tiltEnabled = true;
+                window.addEventListener('deviceorientation', handleOrientation);
+            }
+            // 重設基準點 (將當下拿手機的角度視為中心點)
+            baseBeta = null;
+            baseGamma = null;
+            btnTilt.innerText = '📱 體感：已啟用 (再次點擊校正)';
+            btnTilt.style.background = '#27ae60';
+        }
+
+        function handleOrientation(event) {
+            if (!tiltEnabled) return;
+            let beta = event.beta;   // X軸：前後傾斜
+            let gamma = event.gamma; // Y軸：左右傾斜
+
+            if (baseBeta === null || baseGamma === null) {
+                baseBeta = beta;
+                baseGamma = gamma;
+            }
+
+            const maxAngle = 25; // 傾斜幾度達到最大速度
+            let dPitch = (beta - baseBeta) / maxAngle;
+            let dRoll = (gamma - baseGamma) / maxAngle;
+
+            tiltInputs.pitch = Math.max(-1, Math.min(1, dPitch));
+            tiltInputs.roll = Math.max(-1, Math.min(1, dRoll));
+        }
+
+        btnProp.addEventListener('click', () => {
+            hasProps = true;
+            btnProp.className = 'btn btn-success';
+            btnProp.innerText = '1. 螺旋槳已安裝 ✓';
+            btnProp.disabled = true;
+            propsData.forEach(p => p.mesh.visible = true);
+            checkReady();
+        });
+
+        btnBatt.addEventListener('click', () => {
+            hasBattery = true;
+            btnBatt.className = 'btn btn-success';
+            btnBatt.innerText = '2. 電池已安裝 ✓';
+            btnBatt.disabled = true;
+            checkReady();
+        });
+
+        function checkReady() {
+            if (hasProps && hasBattery) {
+                isReady = true;
+                statusText.innerText = '狀態: 準備起飛！(面板即將自動收合)';
+                statusText.style.color = '#2ecc71';
+                btnView.style.display = 'block';
+
+                // 自動收合說明面板，釋放手機畫面空間
+                setTimeout(() => {
+                    setupGroup.style.display = 'none';
+                    btnToggleUI.innerText = '➕';
+                }, 2000);
+            }
+        }
+
+        btnView.addEventListener('click', () => {
+            viewMode = viewMode === 0 ? 1 : 0;
+            if (viewMode === 1) {
+                btnView.innerText = '切換 第三人稱視角';
+                btnView.style.background = '#e67e22';
+                crosshair.style.display = 'block';
+            } else {
+                btnView.innerText = '切換 FPV 視角';
+                btnView.style.background = '#9b59b6';
+                crosshair.style.display = 'none';
+            }
+        });
+
+        // --- 鍵盤控制邏輯 ---
+        document.addEventListener('keydown', (e) => {
+            switch(e.key.toLowerCase()) {
+                case 'w': kbdInputs.throttle = 1; break;
+                case 's': kbdInputs.throttle = -1; break;
+                case 'a': kbdInputs.yaw = -1; break;
+                case 'd': kbdInputs.yaw = 1; break;
+                case 'arrowup': kbdInputs.pitch = 1; e.preventDefault(); break;
+                case 'arrowdown': kbdInputs.pitch = -1; e.preventDefault(); break;
+                case 'arrowleft': kbdInputs.roll = -1; e.preventDefault(); break;
+                case 'arrowright': kbdInputs.roll = 1; e.preventDefault(); break;
+            }
+        });
+        document.addEventListener('keyup', (e) => {
+            switch(e.key.toLowerCase()) {
+                case 'w': if(kbdInputs.throttle===1) kbdInputs.throttle = 0; break;
+                case 's': if(kbdInputs.throttle===-1) kbdInputs.throttle = 0; break;
+                case 'a': if(kbdInputs.yaw===-1) kbdInputs.yaw = 0; break;
+                case 'd': if(kbdInputs.yaw===1) kbdInputs.yaw = 0; break;
+                case 'arrowup': if(kbdInputs.pitch===1) kbdInputs.pitch = 0; break;
+                case 'arrowdown': if(kbdInputs.pitch===-1) kbdInputs.pitch = 0; break;
+                case 'arrowleft': if(kbdInputs.roll===-1) kbdInputs.roll = 0; break;
+                case 'arrowright': if(kbdInputs.roll===1) kbdInputs.roll = 0; break;
+            }
+        });
+
+        // --- 虛擬搖桿邏輯 (觸控/滑鼠) ---
+        function setupJoystick(zoneId, knobId, axisX, axisY, isLeft) {
+            const zone = document.getElementById(zoneId);
+            const knob = document.getElementById(knobId);
+            const maxRadius = 50;
+            let active = false;
+            let center = { x: 0, y: 0 };
+
+            function start(e) {
+                active = true;
+                const rect = zone.getBoundingClientRect();
+                center = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+                move(e);
+            }
+
+            function move(e) {
+                if (!active) return;
+                let clientX = e.clientX, clientY = e.clientY;
+                if(e.touches && e.touches.length > 0) {
+                    for(let i=0; i<e.touches.length; i++) {
+                        let t = e.touches[i], r = zone.getBoundingClientRect();
+                        if(t.clientX >= r.left && t.clientX <= r.right && t.clientY >= r.top && t.clientY <= r.bottom) {
+                            clientX = t.clientX; clientY = t.clientY; break;
+                        }
+                    }
+                }
+
+                let dx = clientX - center.x;
+                let dy = clientY - center.y;
+                let dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist > maxRadius) { dx = (dx / dist) * maxRadius; dy = (dy / dist) * maxRadius; }
+
+                knob.style.transform = `translate(${dx}px, ${dy}px)`;
+                
+                joyInputs[axisX] = dx / maxRadius;
+                joyInputs[axisY] = -dy / maxRadius; // Y反轉
+            }
+
+            function end() {
+                active = false;
+                joyInputs[axisX] = 0;
+                if (!isLeft) joyInputs[axisY] = 0;
+                else joyInputs.throttle = 0; // 放開即懸停
+                
+                knob.style.transform = `translate(0px, 0px)`;
+            }
+
+            zone.addEventListener('pointerdown', start);
+            window.addEventListener('pointermove', move);
+            window.addEventListener('pointerup', end);
+        }
+
+        setupJoystick('joy-left', 'knob-left', 'yaw', 'throttle', true);
+        setupJoystick('joy-right', 'knob-right', 'roll', 'pitch', false);
+
+
+        // --- 視角縮放邏輯 ---
+        window.addEventListener('wheel', (e) => {
+            if(viewMode === 0) {
+                cameraZoom += e.deltaY * 0.01;
+                cameraZoom = Math.max(5, Math.min(cameraZoom, 40));
+            }
+        });
+
+        let initialPinchDistance = null;
+        container.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 2 && viewMode === 0) {
+                const dx = e.touches[0].clientX - e.touches[1].clientX;
+                const dy = e.touches[0].clientY - e.touches[1].clientY;
+                initialPinchDistance = Math.sqrt(dx * dx + dy * dy);
+            }
+        });
+        container.addEventListener('touchmove', (e) => {
+            if (e.touches.length === 2 && viewMode === 0 && initialPinchDistance) {
+                const dx = e.touches[0].clientX - e.touches[1].clientX;
+                const dy = e.touches[0].clientY - e.touches[1].clientY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                cameraZoom += (initialPinchDistance - dist) * 0.05;
+                cameraZoom = Math.max(5, Math.min(cameraZoom, 40));
+                initialPinchDistance = dist;
+            }
+        });
+        container.addEventListener('touchend', (e) => { if (e.touches.length < 2) initialPinchDistance = null; });
+
+
+        // --- 動畫與物理更新迴圈 ---
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const dt = clock.getDelta();
+
+            if (isReady) {
+                // 1. 結合鍵盤、搖桿與體感輸入，並進行平滑處理 (Smoothing)
+                const targetThrottle = Math.max(-1, Math.min(1, kbdInputs.throttle + joyInputs.throttle));
+                const targetYaw = Math.max(-1, Math.min(1, kbdInputs.yaw + joyInputs.yaw));
+                const targetPitch = Math.max(-1, Math.min(1, kbdInputs.pitch + joyInputs.pitch + tiltInputs.pitch));
+                const targetRoll = Math.max(-1, Math.min(1, kbdInputs.roll + joyInputs.roll + tiltInputs.roll));
+
+                // 讓輸入值有平滑的加減速感
+                flightInputs.throttle += (targetThrottle - flightInputs.throttle) * 5 * dt;
+                flightInputs.yaw += (targetYaw - flightInputs.yaw) * 10 * dt;
+                flightInputs.pitch += (targetPitch - flightInputs.pitch) * 8 * dt;
+                flightInputs.roll += (targetRoll - flightInputs.roll) * 8 * dt;
+
+                // 2. 螺旋槳動態轉速物理
+                const baseSpeed = 15 + Math.max(0, flightInputs.throttle) * 20;
+                
+                propsData.forEach(p => {
+                    // 推桿向前(Pitch>0)時，為了讓機頭下壓，後方馬達(z>0)需加速，前方馬達(z<0)減速
+                    let pitchEffect = p.z * flightInputs.pitch * 12;
+                    // 推桿向右(Roll>0)時，左側馬達(x<0)需加速，右側(x>0)減速
+                    let rollEffect = -p.x * flightInputs.roll * 12;
+                    // 向右旋轉(Yaw>0)時，為了產生順時針扭矩，需增加逆時針(CCW, dir=-1)馬達轉速
+                    let yawEffect = -p.dir * flightInputs.yaw * 15;
+
+                    let finalSpeed = Math.max(2, baseSpeed + pitchEffect + rollEffect + yawEffect);
+                    // 根據自身預設方向(dir)旋轉
+                    p.mesh.rotation.y += p.dir * finalSpeed * dt;
+                });
+
+                // 3. 飛行物理邏輯
+                drone.rotation.y -= flightInputs.yaw * 2.0 * dt;
+                const moveSpeed = 20.0;
+                drone.translateZ(-flightInputs.pitch * moveSpeed * dt);
+                drone.translateX(flightInputs.roll * moveSpeed * dt);
+
+                const liftSpeed = 15.0;
+                drone.position.y += flightInputs.throttle * liftSpeed * dt;
+
+                // 依要求：無人機保持完全水平，不改變傾斜角度
+                drone.rotation.x = 0;
+                drone.rotation.z = 0;
+
+                if (drone.position.y < 0.5) drone.position.y = 0.5;
+
+                // 4. 碰撞偵測 (高空圓環計分系統)
+                hoops.forEach(hoop => {
+                    if (!hoop.active) return;
+                    
+                    const hoopPos = new THREE.Vector3();
+                    hoop.ringMesh.getWorldPosition(hoopPos);
+                    
+                    const dist = drone.position.distanceTo(hoopPos);
+                    
+                    // 若無人機進入圓環範圍內
+                    if (dist < hoop.radius) {
+                        // 判定得分歸屬
+                        if (hoop.isRed) scoreBlue++; // 穿過紅色球門，藍方得分
+                        else scoreRed++;
+                        
+                        document.getElementById('score-blue-val').innerText = scoreBlue;
+                        document.getElementById('score-red-val').innerText = scoreRed;
+
+                        // 得分特效：關閉該球門光芒，並進入冷卻
+                        hoop.active = false;
+                        hoop.ringMesh.material.emissiveIntensity = 0.1;
+                        hoop.ringMesh.material.opacity = 0.3;
+                        
+                        // 閃爍背景
+                        document.body.style.backgroundColor = hoop.isRed ? '#2980b9' : '#c0392b';
+                        setTimeout(() => document.body.style.backgroundColor = '#87CEEB', 200);
+
+                        // 3 秒後球門重新啟用
+                        setTimeout(() => {
+                            hoop.active = true;
+                            hoop.ringMesh.material.emissiveIntensity = 0.5;
+                            hoop.ringMesh.material.opacity = 0.9;
+                        }, 3000);
+                    }
+                });
+            }
+
+            // 5. 攝影機跟隨邏輯
+            if (viewMode === 0) {
+                const relativeCameraOffset = new THREE.Vector3(0, cameraZoom * 0.4, cameraZoom);
+                const cameraOffset = relativeCameraOffset.applyMatrix4(drone.matrixWorld);
+                camera.position.lerp(cameraOffset, 0.1);
+                camera.lookAt(drone.position);
+            } else {
+                const fpvOffset = new THREE.Vector3(0, 0, -0.6);
+                const fpvPos = fpvOffset.applyMatrix4(drone.matrixWorld);
+                camera.position.copy(fpvPos);
+                camera.quaternion.copy(drone.quaternion);
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+
+    </script>
+</body>
+</html>

@@ -2,402 +2,64 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>高級 SVG 向量化工坊</title>
+    <title>SVG 穩定轉換器</title>
     <script src="https://cdn.jsdelivr.net/npm/potrace-js@1.0.3/dist/index.min.js"></script>
     <style>
-        :root {
-            --primary: #007AFF;
-            --bg: #f5f5f7;
-            --card-bg: #ffffff;
-            --border: #d2d2d7;
-            --text: #1d1d1f;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background-color: var(--bg);
-            color: var(--text);
-            margin: 0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            min-height: 100vh;
-            padding: 20px;
-        }
-
-        h1 { margin-bottom: 30px; }
-
-        /* 拖放區域樣式 */
-        #drop-zone {
-            width: 100%;
-            max-width: 800px;
-            height: 150px;
-            border: 3px dashed var(--border);
-            border-radius: 18px;
-            background: var(--card-bg);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: 0.3s;
-            margin-bottom: 20px;
-        }
-        #drop-zone:hover, #drop-zone.dragover {
-            border-color: var(--primary);
-            background-color: #f0f7ff;
-        }
-        #drop-zone p { font-size: 1.2rem; color: #86868b; }
-
-        /* 主工作區 (網格佈局) */
-        #workspace {
-            display: grid;
-            grid-template-columns: 2fr 1fr; /* 左邊預覽 2/3, 右邊控制 1/3 */
-            gap: 20px;
-            width: 100%;
-            max-width: 1200px;
-            display: none; /* 初始隱藏 */
-        }
-
-        /* 1. 左側：大型預覽窗格 */
-        .preview-container {
-            background: var(--card-bg);
-            border-radius: 18px;
-            padding: 20px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-        .preview-header { font-weight: bold; margin-bottom: 15px; width: 100%; text-align: left;}
-        #preview-svg {
-            width: 100%;
-            height: 500px; /* 固定高度，內容縮放 */
-            background-image: linear-gradient(45deg, #eee 25%, transparent 25%), linear-gradient(-45deg, #eee 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #eee 75%), linear-gradient(-45deg, transparent 75%, #eee 75%);
-            background-size: 20px 20px;
-            background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
-            border-radius: 12px;
-            border: 1px solid var(--border);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            overflow: hidden;
-            padding: 10px;
-        }
-        #preview-svg svg {
-            max-width: 100%;
-            max-height: 100%;
-            height: auto;
-            /* 預設 SVG 顏色為黑色 */
-            fill: #000; 
-        }
-
-        /* 2. 右側：控制面板 */
-        .controls-container {
-            background: var(--card-bg);
-            border-radius: 18px;
-            padding: 25px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-        }
-
-        .control-group {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-        .control-label {
-            font-size: 0.9rem;
-            font-weight: 600;
-            color: #515154;
-            display: flex;
-            justify-content: space-between;
-        }
-        .control-value { color: var(--primary); font-family: monospace; }
-        
-        input[type="range"] {
-            width: 100%;
-            cursor: pointer;
-        }
-
-        textarea {
-            width: 100%;
-            height: 120px;
-            font-family: monospace;
-            font-size: 11px;
-            padding: 10px;
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            background: #f9f9fa;
-            color: #333;
-            resize: none;
-            box-sizing: border-box;
-        }
-
-        .btn-group {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            margin-top: auto; /* 推到底部 */
-        }
-        button {
-            width: 100%;
-            padding: 12px;
-            border: none;
-            border-radius: 10px;
-            font-weight: 600;
-            font-size: 1rem;
-            cursor: pointer;
-            transition: 0.2s;
-        }
-        .btn-copy { background-color: #34c759; color: white; }
-        .btn-copy:hover { background-color: #2da94d; }
-        .btn-download { background-color: var(--primary); color: white; }
-        .btn-download:hover { background-color: #0056b3; }
-        button:active { transform: scale(0.98); }
-
-        /* 用於進行膨脹/侵蝕處理的隱藏 Canvas */
-        #processing-canvas { display: none; }
+        body { font-family: sans-serif; text-align: center; padding: 20px; background: #f0f0f0; }
+        .box { background: white; padding: 20px; border-radius: 10px; max-width: 500px; margin: auto; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        #status { color: red; font-weight: bold; margin-bottom: 10px; }
+        #preview { margin-top: 20px; background: #eee; min-height: 100px; }
+        svg { max-width: 100%; height: auto; }
     </style>
 </head>
 <body>
 
-    <h1>🖼️ 高級 SVG 向量化工坊</h1>
+<div class="box">
+    <h2>圖片轉 SVG 工具</h2>
+    <div id="status">檢查引擎中...</div>
+    <input type="file" id="input" accept="image/*">
+    <div id="preview">預覽區</div>
+    <p>HTML 代碼：</p>
+    <textarea id="code" style="width:100%; height:100px;"></textarea>
+</div>
 
-    <div id="drop-zone">
-        <p id="drop-text">拖放圖片或點擊上傳 (JPG, PNG, WebP...)</p>
-        <input type="file" id="upload" accept="image/*" style="display:none">
-    </div>
+<script>
+    const status = document.getElementById('status');
+    const input = document.getElementById('input');
+    const preview = document.getElementById('preview');
+    const code = document.getElementById('code');
 
-    <div id="workspace">
-        
-        <div class="preview-container">
-            <div class="preview-header">🔍 單色向量預覽 (透明背景)</div>
-            <div id="preview-svg"></div>
-        </div>
-
-        <div class="controls-container">
-            
-            <div class="control-group">
-                <div class="control-label">
-                    <span>黑白門檻 (Threshold)</span>
-                    <span id="threshold-val" class="control-value">128</span>
-                </div>
-                <input type="range" id="threshold" min="0" max="255" value="128">
-                <span style="font-size:0.8rem; color:#86868b; display:flex; justify-content:space-between">
-                    <span>更白</span><span>更黑</span>
-                </span>
-            </div>
-
-            <div class="control-group">
-                <div class="control-label">
-                    <span>線條粗細 (模擬)</span>
-                    <span id="thickness-val" class="control-value">正常</span>
-                </div>
-                <input type="range" id="thickness" min="-3" max="3" value="0" step="1">
-                <span style="font-size:0.8rem; color:#86868b; display:flex; justify-content:space-between">
-                    <span>極細</span><span>正常</span><span>極粗</span>
-                </span>
-            </div>
-
-            <div class="control-group">
-                <div class="control-label">HTML Inline SVG 程式碼</div>
-                <textarea id="svg-code" readonly></textarea>
-            </div>
-
-            <div class="btn-group">
-                <button class="btn-copy" onclick="copyCode()">📋 一鍵複製 HTML 程式碼</button>
-                <button class="btn-download" onclick="downloadSvg()">💾 下載 .svg 檔案</button>
-            </div>
-        </div>
-    </div>
-
-    <canvas id="processing-canvas"></canvas>
-
-    <script>
-        const dropZone = document.getElementById('drop-zone');
-        const uploadInput = document.getElementById('upload');
-        const workspace = document.getElementById('workspace');
-        const previewSvg = document.getElementById('preview-svg');
-        const svgCode = document.getElementById('svg-code');
-        const thresholdInput = document.getElementById('threshold');
-        const thresholdVal = document.getElementById('threshold-val');
-        const thicknessInput = document.getElementById('thickness');
-        const thicknessVal = document.getElementById('thickness-val');
-        const procCanvas = document.getElementById('processing-canvas');
-        
-        let originalImageContent = null; // 儲存上傳的原始 DataURL
-
-        // --- 初始化：攔截拖放行為 ---
-        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-            dropZone.addEventListener(eventName, e => { e.preventDefault(); e.stopPropagation(); }, false);
-        });
-        dropZone.addEventListener('dragover', () => dropZone.classList.add('dragover'));
-        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
-        dropZone.addEventListener('drop', e => {
-            dropZone.classList.remove('dragover');
-            if (e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
-        });
-        dropZone.addEventListener('click', () => uploadInput.click());
-        uploadInput.addEventListener('change', e => { if (e.target.files.length > 0) handleFile(e.target.files[0]); });
-
-        // --- 滑桿事件聆聽 (使用防抖 debounce 優化效能) ---
-        let debounceTimer;
-        [thresholdInput, thicknessInput].forEach(input => {
-            input.addEventListener('input', () => {
-                // 更新介面顯示數值
-                thresholdVal.textContent = thresholdInput.value;
-                thicknessVal.textContent = getThicknessLabel(thicknessInput.value);
-                
-                // 防抖處理：避免連續滑動時造成瀏覽器卡死
-                clearTimeout(debounceTimer);
-                debounceTimer = setTimeout(() => {
-                    if (originalImageContent) processWorkflow();
-                }, 100); // 停止滑動 100ms 後才執行轉換
-            });
-        });
-
-        // 粗細滑桿的文字標籤
-        function getThicknessLabel(val) {
-            val = parseInt(val);
-            if (val === 0) return "正常";
-            if (val > 0) return "加粗 +" + val;
-            return "變細 " + val;
+    // 檢查 Potrace 是否載入成功
+    window.onload = () => {
+        if (window.Potrace) {
+            status.innerText = "✅ 引擎準備就緒，請上傳圖片";
+            status.style.color = "green";
+        } else {
+            status.innerText = "❌ 引擎載入失敗，請檢查網路或更換瀏覽器";
         }
+    };
 
-        // --- 核心流程控制 ---
-        function handleFile(file) {
-            if (!file.type.startsWith('image/')) { alert('請上傳圖片檔案！'); return; }
-            const reader = new FileReader();
-            reader.onload = e => {
-                originalImageContent = e.target.result; // 快取原始圖片
-                document.getElementById('drop-text').innerText = "已載入: " + file.name;
-                workspace.style.display = 'grid'; // 顯示工作區
-                processWorkflow(); // 執行轉換
-            };
-            reader.readAsDataURL(file);
-        }
+    input.onchange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
 
-        // 核心工作流：原始圖片 -> Canvas處理(門檻/粗細) -> Potrace轉向量 -> 顯示
-        async function processWorkflow() {
-            const threshold = parseInt(thresholdInput.value);
-            const thickness = parseInt(thicknessInput.value);
-
-            // 1. 在隱藏的 Canvas 上處理黑白門檻和線條粗細
-            const processedDataUrl = await applyCanvasFilters(originalImageContent, threshold, thickness);
-            
-            // 2. 將處理後的圖片交給 Potrace
-            try {
-                const svgContent = await window.Potrace.posterize(processedDataUrl, {
-                    background: 'transparent' // 保持背景透明
-                });
-                
-                // 3. 輸出結果
-                previewSvg.innerHTML = svgContent;
-                svgCode.value = svgContent;
-            } catch (err) {
-                console.error("向量化失敗:", err);
-                alert("圖片處理出錯，請換一張試試。");
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            if (!window.Potrace) {
+                alert("引擎沒載入，無法轉換！");
+                return;
             }
-        }
-
-        // --- Canvas 像素級處理：實現黑白門檻與膨脹/侵蝕 (粗細) ---
-        function applyCanvasFilters(dataUrl, threshold, thickness) {
-            return new Promise(resolve => {
-                const img = new Image();
-                img.onload = () => {
-                    const ctx = procCanvas.getContext('2d');
-                    // 設定畫布大小與圖片一致
-                    procCanvas.width = img.width;
-                    procCanvas.height = img.height;
-                    
-                    // 1. 先繪製原始圖片
-                    ctx.drawImage(img, 0, 0);
-                    
-                    // 2. 獲取像素資料
-                    let imageData = ctx.getImageData(0, 0, procCanvas.width, procCanvas.height);
-                    let pixels = imageData.data;
-                    
-                    // 3. 先進行灰階化與門檻值處理 (變成純黑白)
-                    let binaryMap = new Uint8Array(img.width * img.height); // 用於儲存純黑白狀態 (1黑 0白)
-                    
-                    for (let i = 0; i < pixels.length; i += 4) {
-                        // 計算亮度 (標準灰階公式)
-                        const avg = (pixels[i] * 0.2126 + pixels[i + 1] * 0.7152 + pixels[i + 2] * 0.0722);
-                        const isBlack = avg < threshold ? 1 : 0;
-                        binaryMap[i / 4] = isBlack;
-                    }
-
-                    // 4. 如果有調整粗細，應用膨脹(Dilation)或侵蝕(Erosion)演算法
-                    if (thickness !== 0) {
-                        const width = img.width;
-                        const height = img.height;
-                        let newBinaryMap = new Uint8Array(width * height);
-                        const radius = Math.abs(thickness);
-
-                        for (let y = 0; y < height; y++) {
-                            for (let x = 0; x < width; x++) {
-                                const idx = y * width + x;
-                                let isBlack = binaryMap[idx];
-
-                                // 搜尋鄰域像素
-                                neighborLoop:
-                                for (let ky = -radius; ky <= radius; ky++) {
-                                    for (let kx = -radius; kx <= radius; kx++) {
-                                        const ny = y + ky;
-                                        const nx = x + kx;
-                                        // 確保不越界
-                                        if (ny >= 0 && ny < height && nx >= 0 && nx < width) {
-                                            const nIdx = ny * width + nx;
-                                            if (thickness > 0) {
-                                                // 膨脹：只要鄰域有黑，自己就變黑 (線條變粗)
-                                                if (binaryMap[nIdx] === 1) { isBlack = 1; break neighborLoop; }
-                                            } else {
-                                                // 侵蝕：只要鄰域有白，自己就變白 (線條變細)
-                                                if (binaryMap[nIdx] === 0) { isBlack = 0; break neighborLoop; }
-                                            }
-                                        }
-                                    }
-                                }
-                                newBinaryMap[idx] = isBlack;
-                            }
-                        }
-                        binaryMap = newBinaryMap; // 使用處理後的圖案
-                    }
-
-                    // 5. 將 binaryMap 寫回 Canvas 像素資料
-                    for (let i = 0; i < binaryMap.length; i++) {
-                        const color = binaryMap[i] === 1 ? 0 : 255; // 1是黑(0), 0是白(255)
-                        const pIdx = i * 4;
-                        pixels[pIdx] = pixels[pIdx+1] = pixels[pIdx+2] = color;
-                        pixels[pIdx+3] = 255; // Alpha 不透明
-                    }
-                    
-                    // 6. 將處理後的像素放回畫布，並回傳 DataURL
-                    ctx.putImageData(imageData, 0, 0);
-                    resolve(procCanvas.toDataURL('image/png'));
-                };
-                img.src = dataUrl;
+            // 執行轉換
+            Potrace.posterize(event.target.result).then(svg => {
+                preview.innerHTML = svg;
+                code.value = svg;
+            }).catch(err => {
+                console.error(err);
+                alert("轉換過程出錯：" + err.message);
             });
-        }
-
-        // --- 輸出功能 ---
-        function copyCode() {
-            svgCode.select();
-            document.execCommand('copy');
-            alert('HTML SVG 程式碼已複製！你可以直接貼到 HTML 中。');
-        }
-
-        function downloadSvg() {
-            const blob = new Blob([svgCode.value], { type: 'image/svg+xml' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url; a.download = 'vectorized-image.svg';
-            a.click();
-            URL.revokeObjectURL(url);
-        }
-    </script>
+        };
+        reader.readAsDataURL(file);
+    };
+</script>
 </body>
 </html>
